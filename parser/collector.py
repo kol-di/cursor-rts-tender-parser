@@ -8,11 +8,13 @@ from typing import List
 from enum import Enum
 import itertools
 import time
+from datetime import date, timedelta
 
 
 class WidgetType(Enum):
     GRID = 'grid'
     LIST = 'list'
+    DATE_RANGE = 'date_range'
 
 
 @dataclass(frozen=True)
@@ -30,12 +32,20 @@ class SerachParams():
             ['Искать в файлах', 'Точное соответствие', 'Исключить совместные закупки', 'Только МСП / СМП'], 
             WidgetType.GRID)
     )
+    publish_date: SearchEntry = field(
+        default=SearchEntry(
+            'фильтры по датам', 
+            ['Подача Заявок'], 
+            WidgetType.DATE_RANGE
+        )
+    )
     trade_platforms: SearchEntry = field(
         default=SearchEntry(
             'торговая площадка', 
             ['РТС-тендер'], 
             WidgetType.LIST)
     )
+
 
 
 def xpath_soup(element):
@@ -46,14 +56,14 @@ def xpath_soup(element):
     """
     components = []
     child = element if element.name else element.parent
-    for parent in child.parents:
-        """
-        @type parent: bs4.element.Tag
-        """
-        previous = itertools.islice(parent.children, 0, parent.contents.index(child))
-        xpath_tag = child.name
-        xpath_index = sum(1 for i in previous if i.name == xpath_tag) + 1
-        components.append(xpath_tag if xpath_index == 1 else '%s[%d]' % (xpath_tag, xpath_index))
+    for parent in child.parents:  # type: bs4.element.Tag
+        siblings = parent.find_all(child.name, recursive=False)
+        components.append(
+            child.name if 1 == len(siblings) else '%s[%d]' % (
+                child.name,
+                next(i for i, s in enumerate(siblings, 1) if s is child)
+                )
+            )
         child = parent
     components.reverse()
     return '/%s' % '/'.join(components)
@@ -87,6 +97,18 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                                 checkbox_label_interact = driver.find_element(
                                     By.XPATH, xpath_soup(checkbox_label))
                                 checkbox_label_interact.click()
+        case WidgetType.DATE_RANGE:
+            grid_row = el.find("div", {"class", "grid-row"})
+            for grid_col in grid_row.find_all("div", {"class", "grid-column-2"}):
+                col_title_text = grid_col.find("div", {"class", "form-group__title"}).get_text()
+                for match_option in search_entry.options:
+                    if str.lower(match_option) in str.lower(col_title_text):
+                        date_interval = [date.today() - timedelta(days=1), date.today()]
+                        datepicker_cells = grid_col.find_all("input", {"class": "datepicker"})
+                        for datepicker, date_val in zip(datepicker_cells, date_interval):
+                            datepicker_interact = driver.find_element(By.XPATH, xpath_soup(datepicker))
+                            datepicker_interact.send_keys(date_val.strftime("%d-%m-%Y"))
+
 
 
 def show_more(driver):
@@ -138,15 +160,15 @@ def remove_selection(driver):
                         msr_a_interact.click()
 
 
-def get_modal_settings_row(driver, filter_option, search_entry: SearchEntry):
+def get_modal_settings_row(filter_option, search_entry: SearchEntry):
+    modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
+    
     match search_entry.type:
-        case WidgetType.GRID:
-            modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
+        case WidgetType.GRID | WidgetType.DATE_RANGE:
             for msr in modal_settings_rows:
                 if "filter-helpers" not in msr.get("class"):
                     return msr       
         case WidgetType.LIST:
-            modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
             for msr in modal_settings_rows:
                 if (msr_a := msr.find("a")) is not None:
                     # LIST type widgets also contain checkbox grid, but with extra buttons
@@ -179,7 +201,7 @@ def fill_search_params(driver, search_url):
 
             # if html text matches our hardcoded field title
             if str.lower(search_entry_name) in str.lower(filter_title_el.get_text()):
-                modal_settings_row = get_modal_settings_row(driver, filter_option, search_entry)
+                modal_settings_row = get_modal_settings_row(filter_option, search_entry)
                 fill_parameter(
                     driver, 
                     modal_settings_row, 
