@@ -7,6 +7,7 @@ import dataclasses
 from typing import List
 from enum import Enum
 import itertools
+import time
 
 
 class WidgetType(Enum):
@@ -62,11 +63,12 @@ def run_search(driver):
     search_params = SerachParams()
 
     fill_search_params(driver, r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1")
+    time.sleep(20)
 
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
     match search_entry.type:
-        case WidgetType.GRID:
+        case WidgetType.GRID | WidgetType.LIST:
             # grid rows contain checkbox options. Usually there is only one, but can be more
             grid_rows = el.find_all("div", {"class", "grid-row"})
             for grid_row in grid_rows:
@@ -85,8 +87,6 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                                 checkbox_label_interact = driver.find_element(
                                     By.XPATH, xpath_soup(checkbox_label))
                                 checkbox_label_interact.click()
-        
-        # case WidgetType.LIST:
 
 
 def show_more(driver):
@@ -150,21 +150,9 @@ def get_modal_settings_row(driver, filter_option, search_entry: SearchEntry):
             for msr in modal_settings_rows:
                 if (msr_a := msr.find("a")) is not None:
                     # LIST type widgets also contain checkbox grid, but with extra buttons
-                    if 'показать еще' in str.lower(msr_a.get_text()):
-                        # expand list preventively now that we found the tag
-                        msr_a_interact = driver.find_element(By.XPATH, xpath_soup(msr_a))
-                        msr_a_interact.click()
-                        return msr
-
-
-# def remove_selection(driver, filter_option):
-#     msr_helper = filter_option.find("div", {"class", "modal-settings-row filter-helpers"})
-#     a_tags = msr_helper.find_all("a")
-#     for a_tag in a_tags:
-#         if str.lower(a_tag.get_text()) in 'снять всё':
-#             a_tag_interact = driver.find_element(By.XPATH, xpath_soup(a_tag))
-#             a_tag_interact.click()
-#             break
+                    if 'свернуть' in str.lower(msr_a.get_text()):
+                        # nested msr in LIST type
+                        return msr.find("div", {"class", "modal-settings-row"})
 
 
 def fill_search_params(driver, search_url):
@@ -189,17 +177,13 @@ def fill_search_params(driver, search_url):
             search_entry = getattr(search_params, search_field.name)
             search_entry_name = getattr(search_entry, 'name')
 
-            # try:
             # if html text matches our hardcoded field title
             if str.lower(search_entry_name) in str.lower(filter_title_el.get_text()):
-                # remove_selection(driver, filter_option)
                 modal_settings_row = get_modal_settings_row(driver, filter_option, search_entry)
                 fill_parameter(
                     driver, 
                     modal_settings_row, 
                     search_entry)
-            # except AttributeError:
-            #     print(filter_option)
 
     
     
