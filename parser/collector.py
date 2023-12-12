@@ -89,6 +89,17 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
         # case WidgetType.LIST:
 
 
+def show_more(driver):
+    """Click show more in all search options"""
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
+    filter_options = filter_el.find_all("div", {"class": "modal-settings-section"})
+    for filter_option in filter_options:
+        for msr in filter_option.find_all("div", {"class": "modal-settings-row"}):
+            if (msr_a := msr.find("a")) is not None:
+                if 'показать еще' in str.lower(msr.get_text()):
+                    msr_a_interact = driver.find_element(By.XPATH, xpath_soup(msr_a))
+                    msr_a_interact.click()
 
 
 
@@ -113,38 +124,56 @@ def uncollapse_options(driver):
             driver.find_element(By.XPATH, xpath_soup(filter_title_el)).click()
 
 
-def get_modal_settings_row(filter_option, search_entry: SearchEntry):
+def remove_selection(driver):
+    """Remove checkbox selection in all options"""
+    soup = BeautifulSoup(driver.page_source, 'html.parser')
+    filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
+    filter_options = filter_el.find_all("div", {"class": "modal-settings-section"})
+    for filter_option in filter_options:
+        for msr in filter_option.find_all("div", {"class": "modal-settings-row filter-helpers"}):
+            if msr_a_all := msr.find_all("a"):
+                for msr_a in msr_a_all:
+                    if 'снять всё' in str.lower(msr_a.get_text()):
+                        msr_a_interact = driver.find_element(By.XPATH, xpath_soup(msr_a))
+                        msr_a_interact.click()
+
+
+def get_modal_settings_row(driver, filter_option, search_entry: SearchEntry):
     match search_entry.type:
         case WidgetType.GRID:
             modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
             for msr in modal_settings_rows:
                 if "filter-helpers" not in msr.get("class"):
-                    modal_settings_row = msr
-                    break        
+                    return msr       
         case WidgetType.LIST:
             modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
             for msr in modal_settings_rows:
-                if msr.find("div", {"class", "form-control-search"}) is not None:
-                    modal_settings_row = msr
-                    break
-    
-    return modal_settings_row
+                if (msr_a := msr.find("a")) is not None:
+                    # LIST type widgets also contain checkbox grid, but with extra buttons
+                    if 'показать еще' in str.lower(msr_a.get_text()):
+                        # expand list preventively now that we found the tag
+                        msr_a_interact = driver.find_element(By.XPATH, xpath_soup(msr_a))
+                        msr_a_interact.click()
+                        return msr
 
 
-def remove_selection(driver, filter_option):
-    msr_helper = filter_option.find("div", {"class", "modal-settings-row filter-helpers"})
-    a_tags = msr_helper.find_all("a")
-    for a_tag in a_tags:
-        if str.lower(a_tag.get_text()) in 'снять всё':
-            a_tag_interact = driver.find_element(By.XPATH, xpath_soup(a_tag))
-            a_tag_interact.click()
-            break
+# def remove_selection(driver, filter_option):
+#     msr_helper = filter_option.find("div", {"class", "modal-settings-row filter-helpers"})
+#     a_tags = msr_helper.find_all("a")
+#     for a_tag in a_tags:
+#         if str.lower(a_tag.get_text()) in 'снять всё':
+#             a_tag_interact = driver.find_element(By.XPATH, xpath_soup(a_tag))
+#             a_tag_interact.click()
+#             break
 
 
 def fill_search_params(driver, search_url):
     search_params = SerachParams()
     driver.get(search_url)
+    # the below functions need to be called separately to recreate soup each time
     uncollapse_options(driver)
+    show_more(driver)
+    remove_selection(driver)
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
@@ -160,14 +189,17 @@ def fill_search_params(driver, search_url):
             search_entry = getattr(search_params, search_field.name)
             search_entry_name = getattr(search_entry, 'name')
 
+            # try:
             # if html text matches our hardcoded field title
             if str.lower(search_entry_name) in str.lower(filter_title_el.get_text()):
-                remove_selection(driver, filter_option)
-                modal_settings_row = get_modal_settings_row(filter_option, search_entry)
+                # remove_selection(driver, filter_option)
+                modal_settings_row = get_modal_settings_row(driver, filter_option, search_entry)
                 fill_parameter(
                     driver, 
                     modal_settings_row, 
                     search_entry)
+            # except AttributeError:
+            #     print(filter_option)
 
     
     
