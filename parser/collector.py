@@ -67,19 +67,26 @@ def run_search(driver):
 def fill_parameter(driver, el, search_entry: SearchEntry):
     match search_entry.type:
         case WidgetType.GRID:
-            grid = el.find("div", {"class", "grid-row"})
-            for grid_val in grid.find_all("div", {"class", "grid-column-4-1"}):
-                grid_val_label = grid_val.find("label").get_text()
-                
-                for match_option in search_entry.options:
-                    if str.lower(match_option) == str.lower(grid_val_label):
-                        checkbox = grid_val.find("input")
-                        checkbox_interact = driver.find_element(By.XPATH, xpath_soup(checkbox))
-                        # print(checkbox)
-                        # print(driver.find_element(By.XPATH, xpath_soup(checkbox)).is_selected())
-                        if not checkbox_interact.is_selected():
-                            WebDriverWait(driver, 10).until(EC.element_to_be_clickable(checkbox_interact))
-                            checkbox_interact.click()
+            # grid rows contain checkbox options. Usually there is only one, but can be more
+            grid_rows = el.find_all("div", {"class", "grid-row"})
+            for grid_row in grid_rows:
+                for grid_val in grid_row.find_all("div", {"class", "grid-column-4-1"}):
+                    grid_val_label = grid_val.find("label").get_text()
+
+                    # match hardcoded fields with actutal checkboxes
+                    for match_option in search_entry.options:
+                        if str.lower(match_option) in str.lower(grid_val_label):
+                            checkbox = grid_val.find("input")
+                            checkbox_interact = driver.find_element(By.XPATH, xpath_soup(checkbox))
+
+                            # check checkbox if it is not selected but is in our list
+                            if not checkbox_interact.is_selected():
+                                checkbox_label = grid_val.find("label")
+                                checkbox_label_interact = driver.find_element(
+                                    By.XPATH, xpath_soup(checkbox_label))
+                                checkbox_label_interact.click()
+        
+        # case WidgetType.LIST:
 
 
 
@@ -124,6 +131,15 @@ def get_modal_settings_row(filter_option, search_entry: SearchEntry):
     return modal_settings_row
 
 
+def remove_selection(driver, filter_option):
+    msr_helper = filter_option.find("div", {"class", "modal-settings-row filter-helpers"})
+    a_tags = msr_helper.find_all("a")
+    for a_tag in a_tags:
+        if str.lower(a_tag.get_text()) in 'снять всё':
+            a_tag_interact = driver.find_element(By.XPATH, xpath_soup(a_tag))
+            a_tag_interact.click()
+            break
+
 
 def fill_search_params(driver, search_url):
     search_params = SerachParams()
@@ -146,6 +162,7 @@ def fill_search_params(driver, search_url):
 
             # if html text matches our hardcoded field title
             if str.lower(search_entry_name) in str.lower(filter_title_el.get_text()):
+                remove_selection(driver, filter_option)
                 modal_settings_row = get_modal_settings_row(filter_option, search_entry)
                 fill_parameter(
                     driver, 
