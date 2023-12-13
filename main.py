@@ -3,6 +3,7 @@ import argparse
 from parser.driver import init_driver
 from parser.collector import run_search
 import time
+import logging
 
 
 def main(argv):
@@ -10,6 +11,14 @@ def main(argv):
     ap.add_argument('-m', '--mode', required=False)
     ap.add_argument('-f', '--file', required=(('--mode' in argv) or ('-m' in argv)))
     ap.parse_args()
+
+    logging.basicConfig(
+        filename='runtime.log', 
+        format='%(asctime)s %(message)s', 
+        encoding='utf-8', 
+        level=logging.WARNING
+    )
+
     driver = init_driver()
     run_search(driver)
 
