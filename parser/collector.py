@@ -9,12 +9,14 @@ from enum import Enum
 import itertools
 import time
 from datetime import date, timedelta
+import logging
 
 
 class WidgetType(Enum):
     GRID = 'grid'
     LIST = 'list'
     DATE_RANGE = 'date_range'
+    NESTED_LIST = 'nested_list'
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,12 @@ class SerachParams():
             ['Искать в файлах', 'Точное соответствие', 'Исключить совместные закупки', 'Только МСП / СМП'], 
             WidgetType.GRID)
     )
+    trade_platforms: SearchEntry = field(
+        default=SearchEntry(
+            'торговая площадка', 
+            ['РТС-тендер'], 
+            WidgetType.LIST)
+    )
     publish_date: SearchEntry = field(
         default=SearchEntry(
             'фильтры по датам', 
@@ -39,13 +47,13 @@ class SerachParams():
             WidgetType.DATE_RANGE
         )
     )
-    trade_platforms: SearchEntry = field(
+    okpd: SearchEntry = field(
         default=SearchEntry(
-            'торговая площадка', 
-            ['РТС-тендер'], 
-            WidgetType.LIST)
+            'окпд2', 
+            ['10.86.10.191'], 
+            WidgetType.NESTED_LIST
+        )
     )
-
 
 
 def xpath_soup(element):
@@ -73,7 +81,32 @@ def run_search(driver):
     search_params = SerachParams()
 
     fill_search_params(driver, r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1")
-    time.sleep(20)
+    while True: 
+        time.sleep(20)
+
+
+def _nested_list_dfs(ul, code, is_root=False):
+    lis = ul.find_elements(By.TAG_NAME, 'li')
+    for li in lis:
+        # uncollapse list if collapsed
+        if 'settings-tree--show' not in li.get_attribute('class'):
+            try:
+                btn = li.find_element(By.TAG_NAME, 'button')
+                btn.click()
+            except:
+                continue
+
+        if not is_root:
+            label = li.find_element(By.TAG_NAME, 'label').find_element(By.TAG_NAME, 'b').text
+            print('LABEL', label)
+            if code.startswith(label):
+                if code == label:
+                    return li.find_element(By.TAG_NAME, 'input')
+                ul = li.find_element(By.TAG_NAME, 'ul')
+                return _nested_list_dfs(ul, code)
+        else:
+            ul = li.find_element(By.TAG_NAME, 'ul')
+            return _nested_list_dfs(ul, code)
 
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
@@ -108,6 +141,14 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                         for datepicker, date_val in zip(datepicker_cells, date_interval):
                             datepicker_interact = driver.find_element(By.XPATH, xpath_soup(datepicker))
                             datepicker_interact.send_keys(date_val.strftime("%d-%m-%Y"))
+        case WidgetType.NESTED_LIST:
+            ul = driver.find_element(By.XPATH, xpath_soup(el))
+            for code in search_entry.options:
+                checkbox = _nested_list_dfs(ul, code)
+                checkbox.click()
+            
+
+
 
 
 
@@ -161,20 +202,23 @@ def remove_selection(driver):
 
 
 def get_modal_settings_row(filter_option, search_entry: SearchEntry):
-    modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
-    
     match search_entry.type:
         case WidgetType.GRID | WidgetType.DATE_RANGE:
+            modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
             for msr in modal_settings_rows:
                 if "filter-helpers" not in msr.get("class"):
                     return msr       
         case WidgetType.LIST:
+            modal_settings_rows = filter_option.find_all("div", {"class", "modal-settings-row"})
             for msr in modal_settings_rows:
                 if (msr_a := msr.find("a")) is not None:
                     # LIST type widgets also contain checkbox grid, but with extra buttons
                     if 'свернуть' in str.lower(msr_a.get_text()):
                         # nested msr in LIST type
                         return msr.find("div", {"class", "modal-settings-row"})
+        # for NESTED_LIST there's no msr but we return the deepest definitve structure
+        case WidgetType.NESTED_LIST:
+            return filter_option.find("div", {"class": "settings-tree"}).find("ul")
 
 
 def fill_search_params(driver, search_url):
@@ -193,6 +237,10 @@ def fill_search_params(driver, search_url):
         filter_title_el = filter_option.find(
             "div", {"class": "filter-title"}).find(
                 "div", {"class": "title-collapse title-collapse--more"})
+        try:
+            filter_title_el_text = filter_title_el.get_text()
+        except AttributeError:
+            logging.error(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
 
         # look for match of input field title with our options
         for search_field in dataclasses.fields(search_params):
@@ -200,7 +248,7 @@ def fill_search_params(driver, search_url):
             search_entry_name = getattr(search_entry, 'name')
 
             # if html text matches our hardcoded field title
-            if str.lower(search_entry_name) in str.lower(filter_title_el.get_text()):
+            if str.lower(search_entry_name) in str.lower(filter_title_el_text):
                 modal_settings_row = get_modal_settings_row(filter_option, search_entry)
                 fill_parameter(
                     driver, 
