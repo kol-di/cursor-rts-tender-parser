@@ -1,6 +1,8 @@
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 import selenium.webdriver.support.expected_conditions as EC
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
 from bs4 import BeautifulSoup
 from dataclasses import dataclass, field
 import dataclasses
@@ -50,10 +52,21 @@ class SerachParams():
     okpd: SearchEntry = field(
         default=SearchEntry(
             'окпд2', 
-            ['10.86.10.191', '10.89.99.000', '98.20.10'], 
+            ['10.86.10.191', '10.89.99.000'], 
             WidgetType.NESTED_LIST
         )
     )
+
+
+def run_search(driver):
+    search_params = SerachParams()
+
+    fill_search_params(
+        driver, 
+        r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1", 
+        search_params)
+    while True: 
+        time.sleep(20)
 
 
 def xpath_soup(element):
@@ -75,14 +88,6 @@ def xpath_soup(element):
         child = parent
     components.reverse()
     return '/%s' % '/'.join(components)
-
-
-def run_search(driver):
-    search_params = SerachParams()
-
-    fill_search_params(driver, r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1")
-    while True: 
-        time.sleep(20)
 
 
 def _nested_list_dfs(ul, code, is_root=False):
@@ -144,6 +149,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                         for datepicker, date_val in zip(datepicker_cells, date_interval):
                             datepicker_interact = driver.find_element(By.XPATH, xpath_soup(datepicker))
                             datepicker_interact.send_keys(date_val.strftime("%d-%m-%Y"))
+                            webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
         case WidgetType.NESTED_LIST:
             ul = driver.find_element(By.XPATH, xpath_soup(el))
             for code in search_entry.options:
@@ -222,10 +228,17 @@ def get_modal_settings_row(filter_option, search_entry: SearchEntry):
         # for NESTED_LIST there's no msr but we return the deepest definitve structure
         case WidgetType.NESTED_LIST:
             return filter_option.find("div", {"class": "settings-tree"}).find("ul")
+        
+
+def click_search(driver):
+    search_btn = driver.find_element(
+        By.CLASS_NAME, 'bottomCenterSearch').find_element(
+            By.TAG_NAME, 'button'
+        )
+    search_btn.click()
 
 
-def fill_search_params(driver, search_url):
-    search_params = SerachParams()
+def fill_search_params(driver, search_url, search_params):
     driver.get(search_url)
     # the below functions need to be called separately to recreate soup each time
     uncollapse_options(driver)
@@ -257,6 +270,8 @@ def fill_search_params(driver, search_url):
                     driver, 
                     modal_settings_row, 
                     search_entry)
+                
+    click_search(driver)
 
     
     
