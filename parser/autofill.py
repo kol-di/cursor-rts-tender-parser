@@ -95,7 +95,6 @@ def _nested_list_dfs(ul, code, is_root=False):
             if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
                 if code == label:
                     return li.find_element(By.TAG_NAME, 'label')
-                # ul = li.find_element(By.TAG_NAME, 'ul')
                 ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 return _nested_list_dfs(ul, code)
         else:
@@ -185,14 +184,11 @@ def uncollapse_options(driver):
             filter_title_interact = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, xpath_soup(filter_title_el)))
             )
-
-            # filter_title_interact = driver.find_element(By.XPATH, xpath_soup(filter_title_el))
             _native_click(filter_title_interact, driver)
+
             # make sure element is uncollapsed
-            print(filter_title_interact.get_attribute("class"))
             WebDriverWait(filter_title_interact, 10).until(
                 EC.text_to_be_present_in_element_attribute(
-                    # (By.CLASS_NAME, "title-collapse"), 
                     (By.XPATH, "."), 
                     "class", 
                     "title-collapse--more"
