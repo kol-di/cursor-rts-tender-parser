@@ -13,6 +13,8 @@ import time
 from datetime import date, timedelta
 import logging
 
+from .utils import xpath_soup
+
 
 class WidgetType(Enum):
     GRID = 'grid'
@@ -59,35 +61,20 @@ class SerachParams():
 
 
 def fill(driver):
+    search_url = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
+
     search_params = SerachParams()
 
     fill_search_params(
         driver, 
-        r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1", 
+        search_url,
         search_params)
-    while True: 
-        time.sleep(20)
+    # wait redirect
+    WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
 
 
-def xpath_soup(element):
-    """
-    Generate xpath of soup element
-    :param element: bs4 text or node
-    :return: xpath as string
-    """
-    components = []
-    child = element if element.name else element.parent
-    for parent in child.parents:  # type: bs4.element.Tag
-        siblings = parent.find_all(child.name, recursive=False)
-        components.append(
-            child.name if 1 == len(siblings) else '%s[%d]' % (
-                child.name,
-                next(i for i, s in enumerate(siblings, 1) if s is child)
-                )
-            )
-        child = parent
-    components.reverse()
-    return '/%s' % '/'.join(components)
+def _native_click(el, driver):
+    driver.execute_script("arguments[0].click();", el)
 
 
 def _nested_list_dfs(ul, code, is_root=False):
@@ -108,7 +95,8 @@ def _nested_list_dfs(ul, code, is_root=False):
             if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
                 if code == label:
                     return li.find_element(By.TAG_NAME, 'label')
-                ul = li.find_element(By.TAG_NAME, 'ul')
+                # ul = li.find_element(By.TAG_NAME, 'ul')
+                ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 return _nested_list_dfs(ul, code)
         else:
             ul = li.find_element(By.TAG_NAME, 'ul')
@@ -194,7 +182,22 @@ def uncollapse_options(driver):
                     "div", {"class": "title-collapse title-collapse--less"}
             )
             # click to uncollapse
-            driver.find_element(By.XPATH, xpath_soup(filter_title_el)).click()
+            filter_title_interact = WebDriverWait(driver, 10).until(
+                EC.element_to_be_clickable((By.XPATH, xpath_soup(filter_title_el)))
+            )
+
+            # filter_title_interact = driver.find_element(By.XPATH, xpath_soup(filter_title_el))
+            _native_click(filter_title_interact, driver)
+            # make sure element is uncollapsed
+            print(filter_title_interact.get_attribute("class"))
+            WebDriverWait(filter_title_interact, 10).until(
+                EC.text_to_be_present_in_element_attribute(
+                    # (By.CLASS_NAME, "title-collapse"), 
+                    (By.XPATH, "."), 
+                    "class", 
+                    "title-collapse--more"
+                )
+            )
 
 
 def remove_selection(driver):
