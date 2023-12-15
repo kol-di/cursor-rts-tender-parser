@@ -50,7 +50,7 @@ class SerachParams():
     okpd: SearchEntry = field(
         default=SearchEntry(
             'окпд2', 
-            ['10.86.10.191'], 
+            ['10.86.10.191', '10.89.99.000', '98.20.10'], 
             WidgetType.NESTED_LIST
         )
     )
@@ -86,27 +86,30 @@ def run_search(driver):
 
 
 def _nested_list_dfs(ul, code, is_root=False):
-    lis = ul.find_elements(By.TAG_NAME, 'li')
+    # use xpath to only iterate top level descendants 
+    lis = WebDriverWait(ul, 10).until(EC.visibility_of_all_elements_located((By.XPATH, './li')))
     for li in lis:
         # uncollapse list if collapsed
         if 'settings-tree--show' not in li.get_attribute('class'):
             try:
+                # no button on the leaf level
                 btn = li.find_element(By.TAG_NAME, 'button')
                 btn.click()
             except:
-                continue
+                pass
 
         if not is_root:
             label = li.find_element(By.TAG_NAME, 'label').find_element(By.TAG_NAME, 'b').text
-            print('LABEL', label)
-            if code.startswith(label):
+            if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
                 if code == label:
-                    return li.find_element(By.TAG_NAME, 'input')
+                    return li.find_element(By.TAG_NAME, 'label')
                 ul = li.find_element(By.TAG_NAME, 'ul')
                 return _nested_list_dfs(ul, code)
         else:
             ul = li.find_element(By.TAG_NAME, 'ul')
-            return _nested_list_dfs(ul, code)
+            root_match = _nested_list_dfs(ul, code)
+            if root_match is not None:
+                return root_match
 
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
@@ -144,7 +147,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
         case WidgetType.NESTED_LIST:
             ul = driver.find_element(By.XPATH, xpath_soup(el))
             for code in search_entry.options:
-                checkbox = _nested_list_dfs(ul, code)
+                checkbox = _nested_list_dfs(ul, code, is_root=True)
                 checkbox.click()
             
 
