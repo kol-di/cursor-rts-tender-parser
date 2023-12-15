@@ -1,7 +1,7 @@
 import sys
 import argparse
 from parser.driver import init_driver
-from parser.collector import run_search
+from parser.autofill import fill
 import time
 import logging
 
@@ -20,7 +20,7 @@ def main(argv):
     )
 
     driver = init_driver()
-    run_search(driver)
+    fill(driver)
 
     time.sleep(10)
 
