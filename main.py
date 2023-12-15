@@ -2,6 +2,7 @@ import sys
 import argparse
 from parser.driver import init_driver
 from parser.autofill import fill
+from parser.collector import collect
 import time
 import logging
 
@@ -21,8 +22,10 @@ def main(argv):
 
     driver = init_driver()
     fill(driver)
+    collect(driver)
 
-    time.sleep(10)
+    while True: 
+        time.sleep(20)
 
 
 if __name__ == '__main__':
