@@ -48,7 +48,10 @@ def _parse_number(txt):
 def collect_page_contents(driver):
     # card items dont seem to appear immidiately
     content_interact = driver.find_element(By.ID, 'content')
-    WebDriverWait(content_interact, 10).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "card-item")))
+    try:
+        WebDriverWait(content_interact, 5).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "card-item")))
+    except TimeoutException:    # if no card items then search result is empty
+        return
 
     # parse html tree
     soup = BeautifulSoup(driver.page_source, 'html.parser')
