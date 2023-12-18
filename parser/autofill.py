@@ -21,6 +21,7 @@ class WidgetType(Enum):
     LIST = 'list'
     DATE_RANGE = 'date_range'
     NESTED_LIST = 'nested_list'
+    TEXT = 'text'
 
 
 @dataclass(frozen=True)
@@ -54,8 +55,15 @@ class SerachParams():
     okpd: SearchEntry = field(
         default=SearchEntry(
             'окпд2', 
-            ['10.86.10.191', '10.89.99.000'], 
+            ['10.86.10.191'],    # 10.86.10.191'
             WidgetType.NESTED_LIST
+        )
+    )
+    keyword: SearchEntry = field(
+        default=SearchEntry(
+            None, 
+            ['диетического'], 
+            WidgetType.TEXT
         )
     )
 
@@ -98,7 +106,8 @@ def _nested_list_dfs(ul, code, is_root=False):
                 ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 return _nested_list_dfs(ul, code)
         else:
-            ul = li.find_element(By.TAG_NAME, 'ul')
+            ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+            # ul = li.find_element(By.TAG_NAME, 'ul')
             root_match = _nested_list_dfs(ul, code)
             if root_match is not None:
                 return root_match
@@ -131,7 +140,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 col_title_text = grid_col.find("div", {"class", "form-group__title"}).get_text()
                 for match_option in search_entry.options:
                     if str.lower(match_option) in str.lower(col_title_text):
-                        date_interval = [date.today() - timedelta(days=1), date.today()]
+                        date_interval = [date.today() - timedelta(days=10), date.today()]
                         datepicker_cells = grid_col.find_all("input", {"class": "datepicker"})
                         for datepicker, date_val in zip(datepicker_cells, date_interval):
                             datepicker_interact = driver.find_element(By.XPATH, xpath_soup(datepicker))
@@ -143,8 +152,10 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
             for code in search_entry.options:
                 checkbox = _nested_list_dfs(ul, code, is_root=True)
                 checkbox.click()
-            
-
+        case WidgetType.TEXT:
+            input_interact = driver.find_element(By.XPATH, xpath_soup(el))
+            input_interact.send_keys(' '.join(search_entry.options))
+            # time.sleep(5)
 
 
 
@@ -261,7 +272,10 @@ def fill_search_params(driver, search_url, search_params):
         # look for match of input field title with our options
         for search_field in dataclasses.fields(search_params):
             search_entry = getattr(search_params, search_field.name)
-            search_entry_name = getattr(search_entry, 'name')
+            # for text we have separate logic
+            if search_entry.type is WidgetType.TEXT:
+                continue
+            search_entry_name = search_entry.name
 
             # if html text matches our hardcoded field title
             if str.lower(search_entry_name) in str.lower(filter_title_el_text):
@@ -270,6 +284,14 @@ def fill_search_params(driver, search_url, search_params):
                     driver, 
                     modal_settings_row, 
                     search_entry)
+                
+    # separate fill logic for text
+    input = soup.find("div", {"class": "modal-settings-search"}).find(
+        "div", {"class": "main-search__controls"}).find(
+            "input"
+        )
+    keyword_search_params = search_params.keyword
+    fill_parameter(driver, input, keyword_search_params)
                 
     click_search(driver)
 
