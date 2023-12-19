@@ -3,10 +3,11 @@ from selenium.webdriver.support.wait import WebDriverWait
 import selenium.webdriver.support.expected_conditions as EC
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import TimeoutException
 from bs4 import BeautifulSoup
 from dataclasses import dataclass, field
 import dataclasses
-from typing import List
+from typing import List, Optional, Union
 from enum import Enum
 import itertools
 import time
@@ -15,6 +16,8 @@ import logging
 
 from .utils import xpath_soup
 
+
+FILTER_URL = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
 
 class WidgetType(Enum):
     GRID = 'grid'
@@ -29,6 +32,7 @@ class SearchEntry:
     name: str
     options: List[str]
     type: WidgetType
+    extra: Optional[Union[int, str]] = None
 
 
 @dataclass
@@ -36,7 +40,7 @@ class SerachParams():
     quick_settings: SearchEntry = field(
         default=SearchEntry(
             'быстрые настройки', 
-            ['Искать в файлах', 'Точное соответствие', 'Исключить совместные закупки', 'Только МСП / СМП'], 
+            ['Искать в файлах', 'Точное соответствие'], 
             WidgetType.GRID)
     )
     trade_platforms: SearchEntry = field(
@@ -68,8 +72,9 @@ class SerachParams():
     )
 
 
-def fill(driver):
-    search_url = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
+def fill(driver, input_folder, mode, search_interval, kw_policy):
+    # search_url = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
+    search_url = FILTER_URL
 
     search_params = SerachParams()
 
@@ -98,19 +103,22 @@ def _nested_list_dfs(ul, code, is_root=False):
             except:
                 pass
 
-        if not is_root:
-            label = li.find_element(By.TAG_NAME, 'label').find_element(By.TAG_NAME, 'b').text
-            if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
-                if code == label:
-                    return li.find_element(By.TAG_NAME, 'label')
+        try:
+            if not is_root:
+                label = li.find_element(By.TAG_NAME, 'label').find_element(By.TAG_NAME, 'b').text
+                if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
+                    if code == label:
+                        return li.find_element(By.TAG_NAME, 'label')
+                    ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                    return _nested_list_dfs(ul, code)
+            else:
                 ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
-                return _nested_list_dfs(ul, code)
-        else:
-            ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
-            # ul = li.find_element(By.TAG_NAME, 'ul')
-            root_match = _nested_list_dfs(ul, code)
-            if root_match is not None:
-                return root_match
+                # ul = li.find_element(By.TAG_NAME, 'ul')
+                root_match = _nested_list_dfs(ul, code)
+                if root_match is not None:
+                    return root_match
+        except TimeoutException as e:
+            logging.error("Exception when unrolling nested list occured", exc_info=True)
 
 
 def fill_parameter(driver, el, search_entry: SearchEntry):

@@ -61,7 +61,7 @@ def collect_page_contents(driver):
         print(_parse_number(label))
 
 
-def collect(driver):
+def collect(driver, output_file, mode):
 
     collect_page_contents(driver)
     next_page_numb = 2

@@ -2,6 +2,7 @@ from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
 import time
 
+
 WEBSITE_URL = r'https://www.rts-tender.ru/'
 
 
@@ -18,8 +19,5 @@ def init_driver():
     driver.get(WEBSITE_URL)
     driver.execute_script(r"Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     time.sleep(10)
-
-    # with open('start_source.html', 'w+') as f:
-    #     f.write(driver.page_source)
     
     return driver
