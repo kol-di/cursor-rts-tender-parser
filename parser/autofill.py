@@ -13,6 +13,7 @@ import itertools
 import time
 from datetime import date, timedelta
 import logging
+import sys
 
 from .utils import xpath_soup
 
@@ -94,12 +95,16 @@ class SearchParams:
 
 
 def fill(driver, input_file, mode, search_interval, kw_policy=None):
+    if mode is None:
+        logging.error("No mode provided")
+        sys.exit()
+
     search_url = FILTER_URL
 
     search_params = SearchParams()
     # fill new search params from input
     search_params.publish_date.extra = search_interval
-    with open(input_file) as f:
+    with open(input_file, encoding='utf-8') as f:
         input_data = []
         for line in f:
             input_data.append(line.strip())
@@ -201,8 +206,9 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 checkbox.click()
         case WidgetType.TEXT:
             input_interact = driver.find_element(By.XPATH, xpath_soup(el))
-            input_interact.send_keys(' '.join(search_entry.options))
-            # time.sleep(5)
+            for option in search_entry.options:    
+                input_interact.send_keys(option)
+                webdriver.ActionChains(driver).send_keys(Keys.ENTER).perform()
 
 
 
