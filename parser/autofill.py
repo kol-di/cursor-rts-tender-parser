@@ -27,61 +27,144 @@ class WidgetType(Enum):
     TEXT = 'text'
 
 
-@dataclass(frozen=True)
 class SearchEntry:
-    name: str
-    options: List[str]
-    type: WidgetType
-    extra: Optional[Union[int, str]] = None
+    def __init__(self, name=None, type=None, options=None, extra=None):
+        self._name: str = name
+        self._type: WidgetType = type
+        self._options: List[str] = options
+        self._extra: Optional[Union[int, str]] = extra
+
+    @property
+    def name(self): return self._name
+    
+    @name.setter
+    def name(self, val):
+        self._name = val
+
+    @property
+    def type(self): return self._type
+
+    @type.setter
+    def type(self, val):
+        self._type = val
+
+    @property
+    def options(self): return self._options
+
+    @options.setter
+    def options(self, val):
+        self._options = val
+
+    @property
+    def extra(self): return self._extra
+
+    @extra.setter
+    def extra(self, val):
+        self._extra = val
 
 
-@dataclass
-class SerachParams():
-    quick_settings: SearchEntry = field(
-        default=SearchEntry(
-            'быстрые настройки', 
-            ['Искать в файлах', 'Точное соответствие'], 
-            WidgetType.GRID)
-    )
-    trade_platforms: SearchEntry = field(
-        default=SearchEntry(
-            'торговая площадка', 
-            ['РТС-тендер'], 
-            WidgetType.LIST)
-    )
-    publish_date: SearchEntry = field(
-        default=SearchEntry(
-            'фильтры по датам', 
-            ['Подача Заявок'], 
-            WidgetType.DATE_RANGE
+class SearchParams:
+    def __init__(self):
+        self.quick_settings: SearchEntry = SearchEntry(
+            name='быстрые настройки', 
+            type=WidgetType.GRID, 
+            options=['Искать в файлах', 'Точное соответствие']
         )
-    )
-    okpd: SearchEntry = field(
-        default=SearchEntry(
-            'окпд2', 
-            ['10.86.10.191'],    # 10.86.10.191'
-            WidgetType.NESTED_LIST
+        self.trade_platforms: SearchEntry = SearchEntry(
+            name='торговая площадка', 
+            type=WidgetType.LIST, 
+            options=['РТС-тендер']
         )
-    )
-    keyword: SearchEntry = field(
-        default=SearchEntry(
-            None, 
-            ['диетического'], 
-            WidgetType.TEXT
+        self.publish_date: SearchEntry = SearchEntry(
+            name='фильтры по датам', 
+            type=WidgetType.DATE_RANGE, 
+            options=['Подача Заявок'], 
+            extra=1
         )
-    )
+        self.okpd: SearchEntry = SearchEntry(
+            name='окпд2', 
+            type=WidgetType.NESTED_LIST, 
+            options=[]
+        )
+        self.keyword: SearchEntry = SearchEntry(
+            name=None, 
+            type=WidgetType.TEXT, 
+            options=[]
+        )
 
 
-def fill(driver, input_folder, mode, search_interval, kw_policy):
+# @dataclass(frozen=True)
+# class SearchEntry:
+#     name: str
+#     type: WidgetType
+#     options: List[str] = field(default_factory=lambda: [])
+#     extra: Optional[Union[int, str]] = None
+
+
+# @dataclass
+# class SearchParams():
+#     quick_settings: SearchEntry = field(
+#         default=SearchEntry(
+#             'быстрые настройки', 
+#             WidgetType.GRID,
+#             ['Искать в файлах', 'Точное соответствие'])
+#     )
+#     trade_platforms: SearchEntry = field(
+#         default=SearchEntry(
+#             'торговая площадка', 
+#             WidgetType.LIST, 
+#             ['РТС-тендер'])
+#     )
+#     publish_date: SearchEntry = field(
+#         default=SearchEntry(
+#             'фильтры по датам', 
+#             WidgetType.DATE_RANGE, 
+#             ['Подача Заявок'], 
+#             1   # here it represents number of days in search interval
+#         )
+#     )
+#     okpd: SearchEntry = field(
+#         default=SearchEntry(
+#             'окпд2', 
+#             WidgetType.NESTED_LIST, 
+#             []    # 10.86.10.191'
+#         )
+#     )
+#     keyword: SearchEntry = field(
+#         default=SearchEntry(
+#             None, 
+#             WidgetType.TEXT,
+#             ['диетического']
+#         )
+#     )
+
+
+def fill(driver, input_file, mode, search_interval, kw_policy=None):
     # search_url = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
     search_url = FILTER_URL
 
-    search_params = SerachParams()
+    search_params = SearchParams()
+    # fill new search params from input
+    search_params.publish_date.extra = search_interval
+    with open(input_file) as f:
+        input_data = []
+        for line in f:
+            input_data.append(line.strip())
+    if mode == 'kw':
+        search_params.keyword.options = input_data
+        if kw_policy == 'all':
+            search_params.quick_settings.options = ['Искать в файлах', 'Точное соответствие']
+        if kw_policy == 'any':
+            search_params.quick_settings.options = ['Искать в файлах']
+    if mode == 'okpd': 
+        search_params.okpd.options = input_data
+
 
     fill_search_params(
         driver, 
         search_url,
         search_params)
+    
     # wait redirect
     WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
 
@@ -122,6 +205,9 @@ def _nested_list_dfs(ul, code, is_root=False):
 
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
+    if el is None:
+        logging.warning(f"No parameter to fill for type {search_entry.type.name}")
+
     match search_entry.type:
         case WidgetType.GRID | WidgetType.LIST:
             # grid rows contain checkbox options. Usually there is only one, but can be more
@@ -148,7 +234,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 col_title_text = grid_col.find("div", {"class", "form-group__title"}).get_text()
                 for match_option in search_entry.options:
                     if str.lower(match_option) in str.lower(col_title_text):
-                        date_interval = [date.today() - timedelta(days=10), date.today()]
+                        date_interval = [date.today() - timedelta(days=search_entry.extra), date.today()]
                         datepicker_cells = grid_col.find_all("input", {"class": "datepicker"})
                         for datepicker, date_val in zip(datepicker_cells, date_interval):
                             datepicker_interact = driver.find_element(By.XPATH, xpath_soup(datepicker))
@@ -278,8 +364,8 @@ def fill_search_params(driver, search_url, search_params):
             logging.error(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
 
         # look for match of input field title with our options
-        for search_field in dataclasses.fields(search_params):
-            search_entry = getattr(search_params, search_field.name)
+        for search_entry in vars(search_params).values():
+            # search_entry = getattr(search_params, search_field.name)
             # for text we have separate logic
             if search_entry.type is WidgetType.TEXT:
                 continue
