@@ -76,6 +76,11 @@ class SearchParams:
             type=WidgetType.LIST, 
             options=['РТС-тендер']
         )
+        self.regulation: SearchEntry = SearchEntry(
+            name='правило проведения', 
+            type=WidgetType.GRID, 
+            options=['44-фз']
+        )
         self.publish_date: SearchEntry = SearchEntry(
             name='фильтры по датам', 
             type=WidgetType.DATE_RANGE, 
