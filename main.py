@@ -31,7 +31,9 @@ def get_conf(conf_path):
 
 
 def init_logging(log_path, level=logging.WARNING):
-    log_path = fr'{datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}_{log_path}'
+    log_dir = Path(log_path)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / fr'{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.log'
     logging.basicConfig(
         filename=log_path, 
         format='%(asctime)s %(message)s', 
@@ -45,11 +47,14 @@ def _in_out_file_gen(input_folder, output_folder, out_prefix=''):
     Iterates files in input folder. Creates corresponding output files
     yield: (input file path, output file path)
     """
-    dir_path = Path(input_folder)
-    for in_file_path in dir_path.iterdir():
+    in_folder_path = Path(input_folder)
+    out_folder_path = Path(output_folder)
+    out_folder_path.mkdir(parents=True, exist_ok=True)
+
+    for in_file_path in in_folder_path.iterdir():
         with open(in_file_path, 'r') as f:
             if f.readable():
-                out_file_path = Path(output_folder) / f'{out_prefix}{datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}.txt'
+                out_file_path = out_folder_path / f'{out_prefix}{datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}.txt'
                 # create the new file
                 with open(out_file_path, 'w') as _:
                     pass
