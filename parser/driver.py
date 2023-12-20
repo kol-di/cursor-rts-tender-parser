@@ -6,7 +6,7 @@ import time
 WEBSITE_URL = r'https://www.rts-tender.ru/'
 
 
-def init_driver():
+def init_driver(headless=True):
     service = webdriver.ChromeService(ChromeDriverManager().install())
     options = webdriver.ChromeOptions()
 
@@ -21,8 +21,10 @@ def init_driver():
     options.add_argument('--disable-notifications')
     options.add_argument('--disable-popup-blocking')
 
-    # options.add_argument('--headless')
     options.add_argument('--log-level=3')
+    if headless:
+        options.add_argument('--headless')
+    
     options.accept_insecure_certs = True
     driver = webdriver.Chrome(service=service, options=options)
     driver.get(WEBSITE_URL)

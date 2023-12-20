@@ -21,6 +21,8 @@ def get_args(argv):
                     help='Искать по любым/по всем фразам из списка. Только для поиска по словам')
     ap.add_argument('--search-interval-days', required=False, type=int, 
                     help='Интервал поиска в днях. Конец интервала равен сегодняшней дате')
+    ap.add_argument('--headless', required=False, choices=['y', 'n'], default='y',
+                    help='Запуск без интерфейса')
     return ap.parse_args() 
 
 
@@ -54,7 +56,7 @@ def _in_out_file_gen(input_folder, output_folder, out_prefix=''):
     for in_file_path in in_folder_path.iterdir():
         with open(in_file_path, 'r') as f:
             if f.readable():
-                out_file_path = out_folder_path / f'{out_prefix}{datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}.txt'
+                out_file_path = out_folder_path / f'{out_prefix}{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.txt'
                 # create the new file
                 with open(out_file_path, 'w') as _:
                     pass
@@ -69,7 +71,7 @@ def main(argv):
     conf = get_conf(CONFIG_PATH)
     init_logging(conf['logging'].get('log_path'))
 
-    driver = init_driver()
+    driver = init_driver(headless=ap.headless=='y')
     print('Драйвер подключен')
 
     # get common launch settings
