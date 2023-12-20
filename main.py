@@ -64,6 +64,8 @@ def main(argv):
     conf = get_conf(CONFIG_PATH)
     init_logging(conf['logging'].get('log_path'))
 
+    driver = init_driver()
+
     # get common launch settings
     mode = getattr(ap, 'mode', None)
     search_interval = conf['runtime'].getint('search_interval_days')
@@ -78,29 +80,27 @@ def main(argv):
         if getattr(ap, 'kw_policy', None) is not None:
             kw_policy = ap.kw_policy
 
-        driver = init_driver()
         del_files = []
         for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
-            fill(driver, input_file, mode, search_interval, kw_policy)
+            fill(driver, input_file, 'kw', search_interval, kw_policy)
             collect(driver, output_file)
-            driver.close()
             del_files.append(input_file)
         for file in del_files:
             file.unlink()
-        driver.quit()
+        
 
     if mode is None or mode == 'okpd':
         input_folder = conf['data'].get('input_folder_okpd')
 
-        driver = init_driver()
         del_files = []
         for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
-            fill(driver, input_file, mode, search_interval)
+            fill(driver, input_file, 'okpd', search_interval)
             collect(driver, output_file) 
             del_files.append(input_file)
         for file in del_files:
             file.unlink()
-        driver.quit()
+
+    driver.quit()
 
 
 if __name__ == '__main__':
