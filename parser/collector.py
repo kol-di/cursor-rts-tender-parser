@@ -1,15 +1,22 @@
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 import selenium.webdriver.support.expected_conditions as EC
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 import re
+import time
 
 from .utils import xpath_soup
 
 
-def final_page():
-    pass
+def close_popup(driver):
+    popup_close_btn = driver.find_element(By.CLASS_NAME, 'consultation_modal').find_element(
+        By.CLASS_NAME, 'modal-close'
+    )
+    WebDriverWait(driver, 10).until(EC.element_to_be_clickable(popup_close_btn)).click()
+
 
 
 def next_page(driver, page_num):
@@ -19,7 +26,7 @@ def next_page(driver, page_num):
     """
     pager_interact = driver.find_element(By.ID, 'pager')
     try:
-        WebDriverWait(pager_interact, 10).until(EC.visibility_of_all_elements_located((By.TAG_NAME, "li")))
+        WebDriverWait(pager_interact, 2).until(EC.visibility_of_all_elements_located((By.TAG_NAME, "li")))
     except TimeoutException:    # no pages hence empty search result
         return False
 
@@ -30,8 +37,13 @@ def next_page(driver, page_num):
             next_link = page.find('a', {'class': 'page-link'})
             if next_link.get_text() == str(page_num):
                 current_url = driver.current_url
-                WebDriverWait(driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, xpath_soup(next_link)))).click()
+                try:
+                    WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.XPATH, xpath_soup(next_link)))).click()
+                except ElementClickInterceptedException:
+                    close_popup(driver)
+                    WebDriverWait(driver, 10).until(
+                        EC.element_to_be_clickable((By.XPATH, xpath_soup(next_link)))).click()
                 # only return when successfully redirected
                 WebDriverWait(driver, 10).until(lambda driver: driver.current_url != current_url)
                 return True
@@ -47,7 +59,8 @@ def _parse_number(txt):
 
 def collect_page_contents(driver, file):
     # card items dont seem to appear immidiately
-    content_interact = driver.find_element(By.ID, 'content')
+    content_interact = WebDriverWait(driver, 2).until(EC.visibility_of_element_located((By.ID, 'content')))
+    # content_interact = driver.find_element(By.ID, 'content')
     try:
         WebDriverWait(content_interact, 5).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "card-item")))
     except TimeoutException:    # if no card items then search result is empty
