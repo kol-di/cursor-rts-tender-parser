@@ -7,6 +7,7 @@ import configparser
 import time
 import logging
 from datetime import datetime
+from pathlib import Path
 
 
 CONFIG_PATH = '.\conf.ini'
@@ -14,7 +15,7 @@ CONFIG_PATH = '.\conf.ini'
 
 def get_args(argv):
     ap = argparse.ArgumentParser()
-    ap.add_argument('--mode', required=False, choices=['okdp', 'kw'], 
+    ap.add_argument('--mode', required=False, choices=['okpd', 'kw'], 
                     help='Режим поиска по кодам/по фразам. Если не задан, будет искать по всему')
     ap.add_argument('--kw-policy', required=False, choices=['all', 'any'], 
                     help='Искать по любым/по всем фразам из списка. Только для поиска по словам')
@@ -39,34 +40,67 @@ def init_logging(log_path, level=logging.WARNING):
     )
 
 
+def _in_out_file_gen(input_folder, output_folder, out_prefix=''):
+    """
+    Iterates files in input folder. Creates corresponding output files
+    yield: (input file path, output file path)
+    """
+    dir_path = Path(input_folder)
+    for in_file_path in dir_path.iterdir():
+        with open(in_file_path, 'r') as f:
+            if f.readable():
+                out_file_path = Path(output_folder) / f'{out_prefix}{datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}.txt'
+                # create the new file
+                with open(out_file_path, 'w') as _:
+                    pass
+                yield (in_file_path, out_file_path)
+            else:
+                logging.warning(f"Can't read file {in_file_path}")
+
+
+
 def main(argv):
     ap = get_args(argv)
     conf = get_conf(CONFIG_PATH)
     init_logging(conf['logging'].get('log_path'))
 
-    # different launch optins for different argv combinations
-    if (mode := getattr(ap, 'mode', None)) is not None:
+    # get common launch settings
+    mode = getattr(ap, 'mode', None)
+    search_interval = conf['runtime'].getint('search_interval_days')
+    if getattr(ap, 'search_interval_days', None) is not None:
+        search_interval = ap.search_interval_days
+    output_folder = conf['data'].get('output_folder')
+
+    # launch in different modes with different params. None mode means launch everything
+    if mode is None or mode == 'kw':
+        input_folder = conf['data'].get('input_folder_keyword')
+        kw_policy = conf['runtime'].get('kw_search_policy')
+        if getattr(ap, 'kw_policy', None) is not None:
+            kw_policy = ap.kw_policy
+
         driver = init_driver()
+        del_files = []
+        for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
+            fill(driver, input_file, mode, search_interval, kw_policy)
+            collect(driver, output_file)
+            driver.close()
+            del_files.append(input_file)
+        for file in del_files:
+            file.unlink()
+        driver.quit()
 
-        if mode == 'kw':
-            input_folder = conf['data'].get('input_folder_keyword')
-        if mode == 'okdp':
-            input_folder = conf['data'].get('input_folder_okpd')
+    if mode is None or mode == 'okpd':
+        input_folder = conf['data'].get('input_folder_okpd')
 
-        search_interval = conf['runtime'].get('search_interval_days')
-        if getattr(ap, 'search_interval_days', None) is not None:
-            search_interval = ap.search_interval_days
-
-        if mode == 'kw':
-            kw_policy = conf['runtime'].get('kw_search_policy')
-            if getattr(ap, 'kw_policy', None) is not None:
-                kw_policy = ap.kw_policy
-
-        fill(driver, input_folder, mode, search_interval, kw_policy)
-        collect(driver, conf['data'].get('output_folder'), mode)
-
-    while True: 
-        time.sleep(20)
+        driver = init_driver()
+        del_files = []
+        for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
+            fill(driver, input_file, mode, search_interval)
+            collect(driver, output_file) 
+            del_files.append(input_file)
+        for file in del_files:
+            file.unlink()
+        driver.quit()
 
 
 if __name__ == '__main__':
