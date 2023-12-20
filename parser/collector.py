@@ -45,7 +45,7 @@ def _parse_number(txt):
     return re.search(r"№?(\d+)", txt).group(1)
 
 
-def collect_page_contents(driver):
+def collect_page_contents(driver, file):
     # card items dont seem to appear immidiately
     content_interact = driver.find_element(By.ID, 'content')
     try:
@@ -58,14 +58,16 @@ def collect_page_contents(driver):
     content = soup.find('div', {'id': 'content'})
     for card in content.find_all('div', {'class': 'card-item'}):
         label = card.find('div', {'class': 'card-item__about'}).find('a').get_text()
-        print(_parse_number(label))
+        print(_parse_number(label), file=file)
 
 
-def collect(driver, output_file, mode):
+def collect(driver, output_file):
+    f = open(output_file, 'w')
 
-    collect_page_contents(driver)
+    collect_page_contents(driver, f)
     next_page_numb = 2
     while next_page(driver, next_page_numb):
-        collect_page_contents(driver)
+        collect_page_contents(driver, f)
         next_page_numb += 1
-        # break
+
+    f.close()
