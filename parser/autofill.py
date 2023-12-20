@@ -93,54 +93,7 @@ class SearchParams:
         )
 
 
-# @dataclass(frozen=True)
-# class SearchEntry:
-#     name: str
-#     type: WidgetType
-#     options: List[str] = field(default_factory=lambda: [])
-#     extra: Optional[Union[int, str]] = None
-
-
-# @dataclass
-# class SearchParams():
-#     quick_settings: SearchEntry = field(
-#         default=SearchEntry(
-#             'быстрые настройки', 
-#             WidgetType.GRID,
-#             ['Искать в файлах', 'Точное соответствие'])
-#     )
-#     trade_platforms: SearchEntry = field(
-#         default=SearchEntry(
-#             'торговая площадка', 
-#             WidgetType.LIST, 
-#             ['РТС-тендер'])
-#     )
-#     publish_date: SearchEntry = field(
-#         default=SearchEntry(
-#             'фильтры по датам', 
-#             WidgetType.DATE_RANGE, 
-#             ['Подача Заявок'], 
-#             1   # here it represents number of days in search interval
-#         )
-#     )
-#     okpd: SearchEntry = field(
-#         default=SearchEntry(
-#             'окпд2', 
-#             WidgetType.NESTED_LIST, 
-#             []    # 10.86.10.191'
-#         )
-#     )
-#     keyword: SearchEntry = field(
-#         default=SearchEntry(
-#             None, 
-#             WidgetType.TEXT,
-#             ['диетического']
-#         )
-#     )
-
-
 def fill(driver, input_file, mode, search_interval, kw_policy=None):
-    # search_url = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
     search_url = FILTER_URL
 
     search_params = SearchParams()
