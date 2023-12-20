@@ -59,28 +59,35 @@ def _parse_number(txt):
 
 def collect_page_contents(driver, file):
     # card items dont seem to appear immidiately
-    content_interact = WebDriverWait(driver, 2).until(EC.visibility_of_element_located((By.ID, 'content')))
+    content_interact = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.ID, 'content')))
     # content_interact = driver.find_element(By.ID, 'content')
     try:
         WebDriverWait(content_interact, 5).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "card-item")))
     except TimeoutException:    # if no card items then search result is empty
-        return
+        return 0
 
+    collect_cnt = 0
     # parse html tree
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     content = soup.find('div', {'id': 'content'})
     for card in content.find_all('div', {'class': 'card-item'}):
         label = card.find('div', {'class': 'card-item__about'}).find('a').get_text()
         print(_parse_number(label), file=file)
+        collect_cnt += 1
+
+    return collect_cnt
 
 
 def collect(driver, output_file):
     f = open(output_file, 'w')
 
-    collect_page_contents(driver, f)
+    collected_cnt = 0
+    collected_cnt += collect_page_contents(driver, f)
     next_page_numb = 2
     while next_page(driver, next_page_numb):
-        collect_page_contents(driver, f)
+        collected_cnt += collect_page_contents(driver, f)
         next_page_numb += 1
 
     f.close()
+
+    return collected_cnt

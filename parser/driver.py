@@ -21,7 +21,8 @@ def init_driver():
     options.add_argument('--disable-notifications')
     options.add_argument('--disable-popup-blocking')
 
-    options.add_argument('--headless')
+    # options.add_argument('--headless')
+    options.add_argument('--log-level=3')
     options.accept_insecure_certs = True
     driver = webdriver.Chrome(service=service, options=options)
     driver.get(WEBSITE_URL)

@@ -70,6 +70,7 @@ def main(argv):
     init_logging(conf['logging'].get('log_path'))
 
     driver = init_driver()
+    print('Драйвер подключен')
 
     # get common launch settings
     mode = getattr(ap, 'mode', None)
@@ -87,8 +88,10 @@ def main(argv):
 
         del_files = []
         for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
+            print(f'Поиск по ключевым словам из файла {input_file}')
             fill(driver, input_file, 'kw', search_interval, kw_policy)
-            collect(driver, output_file)
+            collected_cnt = collect(driver, output_file)
+            print(f'Найдено {collected_cnt} извещений')
             del_files.append(input_file)
         for file in del_files:
             file.unlink()
@@ -99,8 +102,10 @@ def main(argv):
 
         del_files = []
         for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
+            print(f'Поиск по кодам ОКПД из файла {input_file}')
             fill(driver, input_file, 'okpd', search_interval)
-            collect(driver, output_file) 
+            collected_cnt = collect(driver, output_file) 
+            print(f'Найдено {collected_cnt} извещений')
             del_files.append(input_file)
         for file in del_files:
             file.unlink()
