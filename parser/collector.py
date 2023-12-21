@@ -75,9 +75,6 @@ def collect_page_contents(driver):
         label = card.find('div', {'class': 'card-item__about'}).find('a').get_text()
         collected.append(_clean_label(label))
 
-    # new_collected = db_conn.get_new_numbers(collected)
-    # for num in new_collected:
-    #     print(num, file=file)
     return collected
 
 
@@ -90,8 +87,12 @@ def collect(driver, output_file, db_conn):
         next_page_numb += 1
 
     new_collected = db_conn.get_new_numbers(collected)
-    with open(output_file, 'w') as f:
-        for num in new_collected:
-            print(num, file=f)
+    if new_collected:
+        with open(output_file, 'w') as f:
+            for num in new_collected:
+                print(num, file=f)
+    else:
+        output_file.unlink()
 
+    print(f'Найдено {len(collected)}, из них {len(new_collected)} новых')
     return len(new_collected)
