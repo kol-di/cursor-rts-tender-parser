@@ -53,41 +53,45 @@ def next_page(driver, page_num):
 
 
 
-def _parse_number(txt):
+def _clean_label(txt):
     return re.search(r"№?(\d+)", txt).group(1)
 
 
-def collect_page_contents(driver, file):
+def collect_page_contents(driver):
+    collected = []
+
     # card items dont seem to appear immidiately
     content_interact = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.ID, 'content')))
     # content_interact = driver.find_element(By.ID, 'content')
     try:
         WebDriverWait(content_interact, 5).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "card-item")))
     except TimeoutException:    # if no card items then search result is empty
-        return 0
+        return collected
 
-    collect_cnt = 0
     # parse html tree
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     content = soup.find('div', {'id': 'content'})
     for card in content.find_all('div', {'class': 'card-item'}):
         label = card.find('div', {'class': 'card-item__about'}).find('a').get_text()
-        print(_parse_number(label), file=file)
-        collect_cnt += 1
+        collected.append(_clean_label(label))
 
-    return collect_cnt
+    # new_collected = db_conn.get_new_numbers(collected)
+    # for num in new_collected:
+    #     print(num, file=file)
+    return collected
 
 
-def collect(driver, output_file):
-    f = open(output_file, 'w')
-
-    collected_cnt = 0
-    collected_cnt += collect_page_contents(driver, f)
+def collect(driver, output_file, db_conn):
+    collected = []
+    collected.extend(collect_page_contents(driver))
     next_page_numb = 2
     while next_page(driver, next_page_numb):
-        collected_cnt += collect_page_contents(driver, f)
+        collected.extend(collect_page_contents(driver))
         next_page_numb += 1
 
-    f.close()
+    new_collected = db_conn.get_new_numbers(collected)
+    with open(output_file, 'w') as f:
+        for num in new_collected:
+            print(num, file=f)
 
-    return collected_cnt
+    return len(new_collected)
