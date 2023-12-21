@@ -14,6 +14,7 @@ import time
 from datetime import date, timedelta
 import logging
 import sys
+import chardet
 
 from .utils import xpath_soup
 
@@ -109,7 +110,9 @@ def fill(driver, input_file, mode, search_interval, kw_policy=None):
     search_params = SearchParams()
     # fill new search params from input
     search_params.publish_date.extra = search_interval
-    with open(input_file, encoding='utf-8') as f:
+    with open(input_file, 'rb') as f:
+        dec = chardet.detect(f.read())
+    with open(input_file, encoding=dec['encoding']) as f:
         input_data = []
         for line in f:
             input_data.append(line.strip())
