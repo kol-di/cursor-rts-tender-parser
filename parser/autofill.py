@@ -158,10 +158,10 @@ def _nested_list_dfs(ul, code, is_root=False):
                 if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
                     if code == label:
                         return li.find_element(By.TAG_NAME, 'label')
-                    ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                    ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                     return _nested_list_dfs(ul, code)
             else:
-                ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 # ul = li.find_element(By.TAG_NAME, 'ul')
                 root_match = _nested_list_dfs(ul, code)
                 if root_match is not None:
