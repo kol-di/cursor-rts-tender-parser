@@ -75,7 +75,7 @@ class SearchParams:
         self.trade_platforms: SearchEntry = SearchEntry(
             name='торговая площадка', 
             type=WidgetType.LIST, 
-            options=['РТС-тендер']
+            options=['РТС-тендер', 'АО "РАД"', 'АО «ЕЭТП»', 'АГЗ РТ', 'АО «Сбербанк-АСТ»', 'лектронная Торговая Площадка 223', 'ЭТП ТЭК-Торг', 'Электронная торговая площадка «Фабрикант»', 'ЭТП Газпромбанк']
         )
         self.regulation: SearchEntry = SearchEntry(
             name='правило проведения', 
@@ -85,7 +85,7 @@ class SearchParams:
         self.publish_date: SearchEntry = SearchEntry(
             name='фильтры по датам', 
             type=WidgetType.DATE_RANGE, 
-            options=['Подача Заявок'], 
+            options=['Опубликовано'], 
             extra=1
         )
         self.okpd: SearchEntry = SearchEntry(
