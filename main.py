@@ -59,9 +59,6 @@ def _in_out_file_gen(input_folder, output_folder, out_prefix=''):
         with open(in_file_path, 'r') as f:
             if f.readable():
                 out_file_path = out_folder_path / f'{out_prefix}{datetime.now().strftime("%d_%m_%Y_%H_%M_%S")}.txt'
-                # create the new file
-                with open(out_file_path, 'w') as _:
-                    pass
                 yield (in_file_path, out_file_path)
             else:
                 logging.warning(f"Can't read file {in_file_path}")

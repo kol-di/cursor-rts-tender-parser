@@ -91,8 +91,8 @@ def collect(driver, output_file, db_conn):
         with open(output_file, 'w') as f:
             for num in new_collected:
                 print(num, file=f)
-    else:
-        output_file.unlink()
+    # else:
+    #     output_file.unlink()
 
     print(f'Найдено {len(collected)}, из них {len(new_collected)} новых')
     return len(new_collected)
