@@ -17,3 +17,7 @@ def xpath_soup(element):
         child = parent
     components.reverse()
     return '/%s' % '/'.join(components)
+
+
+def native_click(el, driver):
+    driver.execute_script("arguments[0].click();", el)
