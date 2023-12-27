@@ -155,14 +155,15 @@ def _nested_list_dfs(ul, code, is_root=False):
         try:
             if not is_root:
                 label = li.find_element(By.TAG_NAME, 'label').find_element(By.TAG_NAME, 'b').text
-                if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
+                if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1]) and label.endswith('0')):
                     if code == label:
+                        print('Найден код', label)
                         return li.find_element(By.TAG_NAME, 'label')
                     ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
-                    return _nested_list_dfs(ul, code)
+                    if (ret := _nested_list_dfs(ul, code)) is not None:
+                        return ret
             else:
                 ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
-                # ul = li.find_element(By.TAG_NAME, 'ul')
                 root_match = _nested_list_dfs(ul, code)
                 if root_match is not None:
                     return root_match
