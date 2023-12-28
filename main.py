@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 
 from parser.driver import init_driver
-from parser.autofill import fill
+from parser.autofill import fill, get_input_data, WidgetType
 from parser.collector import collect
 from db.connection import DBConnection
 
@@ -92,7 +92,8 @@ def main(argv):
         del_files = []
         for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
             print(f'Поиск по ключевым словам из файла {input_file}')
-            fill(driver, input_file, 'kw', search_interval, kw_policy)
+            input_data = get_input_data(input_file)
+            fill(driver, input_data, 'kw', search_interval, kw_policy=kw_policy)
             collect(driver, output_file, db_conn)
             del_files.append(input_file)
         for file in del_files:
@@ -105,8 +106,16 @@ def main(argv):
         del_files = []
         for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
             print(f'Поиск по кодам ОКПД из файла {input_file}')
-            fill(driver, input_file, 'okpd', search_interval)
-            collect(driver, output_file, db_conn) 
+            input_data = get_input_data(input_file)
+            failure = fill(driver, input_data, 'okpd', search_interval, okdp_policy='tree')
+            # if all codes were not filled then search uses all codes, so we skip
+            if len(failure[WidgetType.NESTED_LIST]) < len(input_data):
+                collect(driver, output_file, db_conn) 
+            if failure[WidgetType.NESTED_LIST]:
+                for code in failure[WidgetType.NESTED_LIST]:
+                    fill(driver, code, 'okpd', search_interval, okdp_policy='text')
+                    collect(driver, output_file, db_conn)
+
             del_files.append(input_file)
         for file in del_files:
             file.unlink()
