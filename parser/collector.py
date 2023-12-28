@@ -11,6 +11,14 @@ import time
 from .utils import xpath_soup, native_click
 
 
+def filter_unique(file):
+    with open(file, 'r') as f:
+        records = set([l.strip() for l in f.readlines()])
+    with open(file, 'w') as f:
+        for rec in records:
+            f.write(f'{rec}\n')
+
+
 def close_popup(driver):
     popup_close_btn = driver.find_element(By.CLASS_NAME, 'consultation_modal').find_element(
         By.CLASS_NAME, 'modal-close'
@@ -95,7 +103,7 @@ def collect(driver, output_file, db_conn):
 
     new_collected = db_conn.get_new_numbers(collected)
     if new_collected:
-        with open(output_file, 'w') as f:
+        with open(output_file, 'a') as f:
             for num in new_collected:
                 print(num, file=f)
 

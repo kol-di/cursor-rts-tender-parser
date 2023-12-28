@@ -8,7 +8,7 @@ from pathlib import Path
 
 from parser.driver import init_driver
 from parser.autofill import fill, get_input_data, WidgetType
-from parser.collector import collect
+from parser.collector import collect, filter_unique
 from db.connection import DBConnection
 
 
@@ -115,6 +115,7 @@ def main(argv):
                 for code in failure[WidgetType.NESTED_LIST]:
                     fill(driver, code, 'okpd', search_interval, okdp_policy='text')
                     collect(driver, output_file, db_conn)
+            filter_unique(output_file)
 
             del_files.append(input_file)
         for file in del_files:
