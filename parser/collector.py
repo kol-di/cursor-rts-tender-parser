@@ -8,7 +8,7 @@ from selenium.common.exceptions import TimeoutException, ElementClickIntercepted
 import re
 import time
 
-from .utils import xpath_soup
+from .utils import xpath_soup, native_click
 
 
 def close_popup(driver):
@@ -38,17 +38,24 @@ def next_page(driver, page_num):
             if next_link.get_text() == str(page_num):
                 current_url = driver.current_url
                 try:
-                    WebDriverWait(driver, 10).until(
-                        EC.element_to_be_clickable((By.XPATH, xpath_soup(next_link)))).click()
+                    el_click = WebDriverWait(driver, 20).until(
+                        EC.element_to_be_clickable((By.XPATH, xpath_soup(next_link))))
+                    native_click(el_click, driver)
                 except ElementClickInterceptedException:
                     close_popup(driver)
-                    WebDriverWait(driver, 10).until(
+                    el_click = WebDriverWait(driver, 20).until(
                         EC.element_to_be_clickable((By.XPATH, xpath_soup(next_link)))).click()
+                    native_click(el_click, driver)
                 # only return when successfully redirected
-                WebDriverWait(driver, 10).until(lambda driver: driver.current_url != current_url)
+                try:
+                    WebDriverWait(driver, 20).until(lambda driver: driver.current_url != current_url)
+                except TimeoutException:
+                    driver.refresh()
+                    return next_page(driver, page_num)
                 return True
         except AttributeError:
             pass
+
     return False
 
 
@@ -91,8 +98,6 @@ def collect(driver, output_file, db_conn):
         with open(output_file, 'w') as f:
             for num in new_collected:
                 print(num, file=f)
-    else:
-        output_file.unlink()
 
     print(f'Найдено {len(collected)}, из них {len(new_collected)} новых')
     return len(new_collected)

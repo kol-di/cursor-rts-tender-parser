@@ -13,18 +13,19 @@ class DBConnection:
         if not nums:
             return []
         
-        nums_str = ', '.join(f"('{num}')" for num in nums)
         query1 = \
-f"""
+"""
 IF (OBJECT_ID('tempdb..#RTSTempCollected') IS NOT NULL) 
 	DROP TABLE #RTSTempCollected
 
 CREATE TABLE #RTSTempCollected (notifnr varchar(50))
-
+"""
+        query2 = lambda nums_str: \
+f"""
 INSERT INTO #RTSTempCollected
 VALUES {nums_str}
 """
-        query2 = \
+        query3 = \
 """
 SELECT distinct t.notifnr 
 FROM #RTSTempCollected t
@@ -35,7 +36,13 @@ WHERE n.id_Notification is NULL
 
         cursor = self.conn.cursor()
         cursor.execute(query1)
-        cursor.execute(query2)
+        
+        slice_sz = 999
+        for nums_slice in [nums[i:i + slice_sz] for i in range(0, len(nums), slice_sz)]:
+            nums_str = ', '.join(f"('{num}')" for num in nums_slice)
+            cursor.execute(query2(nums_str))
+
+        cursor.execute(query3)
         ret = [num[0] for num in cursor.fetchall()]
         cursor.close()
         

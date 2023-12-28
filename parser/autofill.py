@@ -16,7 +16,7 @@ import logging
 import sys
 import chardet
 
-from .utils import xpath_soup
+from .utils import xpath_soup, native_click
 
 
 FILTER_URL = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
@@ -75,7 +75,7 @@ class SearchParams:
         self.trade_platforms: SearchEntry = SearchEntry(
             name='торговая площадка', 
             type=WidgetType.LIST, 
-            options=['РТС-тендер']
+            options=['РТС-тендер', 'АО "РАД"', 'АО «ЕЭТП»', 'АГЗ РТ', 'АО «Сбербанк-АСТ»', 'лектронная Торговая Площадка 223', 'ЭТП ТЭК-Торг', 'Электронная торговая площадка «Фабрикант»', 'ЭТП Газпромбанк']
         )
         self.regulation: SearchEntry = SearchEntry(
             name='правило проведения', 
@@ -85,7 +85,7 @@ class SearchParams:
         self.publish_date: SearchEntry = SearchEntry(
             name='фильтры по датам', 
             type=WidgetType.DATE_RANGE, 
-            options=['Подача Заявок'], 
+            options=['Опубликовано'], 
             extra=1
         )
         self.okpd: SearchEntry = SearchEntry(
@@ -135,10 +135,6 @@ def fill(driver, input_file, mode, search_interval, kw_policy=None):
     WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
 
 
-def _native_click(el, driver):
-    driver.execute_script("arguments[0].click();", el)
-
-
 def _nested_list_dfs(ul, code, is_root=False):
     # use xpath to only iterate top level descendants 
     lis = WebDriverWait(ul, 10).until(EC.visibility_of_all_elements_located((By.XPATH, './li')))
@@ -155,14 +151,14 @@ def _nested_list_dfs(ul, code, is_root=False):
         try:
             if not is_root:
                 label = li.find_element(By.TAG_NAME, 'label').find_element(By.TAG_NAME, 'b').text
-                if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1])):
+                if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1]) and label.endswith('0')):
                     if code == label:
                         return li.find_element(By.TAG_NAME, 'label')
-                    ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
-                    return _nested_list_dfs(ul, code)
+                    ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                    if (ret := _nested_list_dfs(ul, code)) is not None:
+                        return ret
             else:
-                ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
-                # ul = li.find_element(By.TAG_NAME, 'ul')
+                ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 root_match = _nested_list_dfs(ul, code)
                 if root_match is not None:
                     return root_match
@@ -211,7 +207,11 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
             ul = driver.find_element(By.XPATH, xpath_soup(el))
             for code in search_entry.options:
                 checkbox = _nested_list_dfs(ul, code, is_root=True)
-                checkbox.click()
+                if checkbox is not None:
+                    print(f'Найден код {code}')
+                    checkbox.click()
+                else:
+                    print(f'Не удалось найти код {code}')
         case WidgetType.TEXT:
             input_interact = driver.find_element(By.XPATH, xpath_soup(el))
             for option in search_entry.options:    
@@ -256,7 +256,7 @@ def uncollapse_options(driver):
             filter_title_interact = WebDriverWait(driver, 10).until(
                 EC.element_to_be_clickable((By.XPATH, xpath_soup(filter_title_el)))
             )
-            _native_click(filter_title_interact, driver)
+            native_click(filter_title_interact, driver)
 
             # make sure element is uncollapsed
             WebDriverWait(filter_title_interact, 10).until(
