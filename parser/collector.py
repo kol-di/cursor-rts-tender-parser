@@ -7,8 +7,6 @@ from selenium.common.exceptions import (
     ElementClickInterceptedException, 
     StaleElementReferenceException)
 import re
-import time
-from tqdm import tqdm
 from typing import Tuple, Callable
 
 from .utils import xpath_soup, native_click
@@ -123,28 +121,16 @@ def progress_bar_len(driver, res_per_page=10):
     return int(count / res_per_page)
 
 
-def collect(driver, output_file=None, db_conn=None):
+def collect(driver):
+    collected = []
 
-    with tqdm(total=progress_bar_len(driver)) as pbar:
-        collected = []
+    collected.extend(collect_page_contents(driver))
+    next_page_numb = 2
 
+    while next_page(driver, next_page_numb):
         collected.extend(collect_page_contents(driver))
-        next_page_numb = 2
-        pbar.update(1)
+        next_page_numb += 1
 
-        while next_page(driver, next_page_numb):
-            collected.extend(collect_page_contents(driver))
-            next_page_numb += 1
-            pbar.update(1)
-
-        # new_collected = db_conn.get_new_numbers(collected)
-        # if new_collected:
-        #     with open(output_file, 'a') as f:
-        #         for num in new_collected:
-        #             print(num, file=f)
-
-    # print(f'Найдено {len(collected)}, из них {len(new_collected)} новых')
-    # return len(new_collected)
     return collected
 
 

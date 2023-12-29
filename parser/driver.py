@@ -43,4 +43,3 @@ def init_driver(headless=True):
 
 def quit_driver():
     DRIVER.quit()
-    return 0

@@ -163,8 +163,8 @@ def main(argv):
                         filter_unique(output_file)
 
                         del_files.append(input_file)
-                    # for file in del_files:
-                    #     file.unlink()
+                    for file in del_files:
+                        file.unlink()
                     
 
                 if mode is None or mode == 'okpd':
@@ -182,8 +182,8 @@ def main(argv):
                         filter_unique(output_file)
 
                         del_files.append(input_file)
-                    # for file in del_files:
-                    #     file.unlink()
+                    for file in del_files:
+                        file.unlink()
                         
             finally:
                 # quit all drivers

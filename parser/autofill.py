@@ -211,13 +211,12 @@ def _code_searchbox_input(code, searchbox, driver):
     WebDriverWait(suggest, 20).until(
         EC.text_to_be_present_in_element((By.TAG_NAME, "b"), code)
     )
-    # suggest.click()
     native_click(suggest, driver)
 
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
     if el is None:
-        print(f"No parameter to fill for type {search_entry.type.name}"))
+        print(f"No parameter to fill for type {search_entry.type.name}")
         # logging.warning(f"No parameter to fill for type {search_entry.type.name}")
 
     # return options which cant be filled
