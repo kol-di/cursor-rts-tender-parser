@@ -200,4 +200,5 @@ def main(argv):
 
 
 if __name__ == '__main__':
+    mp.freeze_support()
     main(sys.argv[1:])
