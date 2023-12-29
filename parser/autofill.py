@@ -17,7 +17,7 @@ import sys
 import chardet
 from pathlib import Path
 
-from .utils import xpath_soup, native_click
+from .utils import xpath_soup, native_click, get_pid
 
 
 FILTER_URL = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
@@ -118,7 +118,8 @@ def get_input_data(input):
 
 def fill(driver, input_data, mode, search_interval, kw_policy=None, okdp_policy=None):
     if mode is None:
-        logging.error("No mode provided")
+        print("No mode provided")
+        # logging.error("No mode provided")
         sys.exit()
     if input_data is None or not input_data:
         return None
@@ -181,7 +182,8 @@ def _nested_list_dfs(ul, code, is_root=False):
                 if root_match is not None:
                     return root_match
         except TimeoutException as e:
-            logging.error("Exception when unrolling nested list occured", exc_info=True)
+            pass
+            # logging.error(f"Process {get_pid()}: Exception when unrolling nested list for code {code} occured", exc_info=True)
 
 
 def _code_searchbox_input(code, searchbox, driver):
@@ -215,7 +217,8 @@ def _code_searchbox_input(code, searchbox, driver):
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
     if el is None:
-        logging.warning(f"No parameter to fill for type {search_entry.type.name}")
+        print(f"No parameter to fill for type {search_entry.type.name}"))
+        # logging.warning(f"No parameter to fill for type {search_entry.type.name}")
 
     # return options which cant be filled
     failed = []
@@ -395,7 +398,8 @@ def fill_search_params(driver, search_url, search_params):
         try:
             filter_title_el_text = filter_title_el.get_text()
         except AttributeError:
-            logging.error(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
+            print(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
+            # logging.error(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
 
         # look for match of input field title with our options
         for search_entry in vars(search_params).values():
