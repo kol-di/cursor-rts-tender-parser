@@ -1,3 +1,7 @@
+from math import ceil
+import multiprocessing as mp
+
+
 def xpath_soup(element):
     """
     Generate xpath of soup element
@@ -21,3 +25,15 @@ def xpath_soup(element):
 
 def native_click(el, driver):
     driver.execute_script("arguments[0].click();", el)
+
+
+def chunk_into_n(arr, n):
+    sz = ceil(len(arr) / n)
+    return list(
+        map(lambda x: arr[x * sz: x * sz + sz], 
+            list(range(n)))
+    )
+
+def get_pid():
+    proc = mp.current_process()
+    return proc.pid

@@ -1,9 +1,12 @@
 from selenium import webdriver
 from webdriver_manager.chrome import ChromeDriverManager
+import multiprocessing as mp
 import time
 
 
 WEBSITE_URL = r'https://www.rts-tender.ru/'
+
+DRIVER = None   # this variable is local to each subprocess
 
 
 def init_driver(headless=True):
@@ -31,4 +34,13 @@ def init_driver(headless=True):
     driver.execute_script(r"Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     time.sleep(10)
     
-    return driver
+    global DRIVER
+    DRIVER = driver
+
+    driver_id = mp.current_process().pid
+    print(f'Драйвер {driver_id} подключен')
+
+
+def quit_driver():
+    DRIVER.quit()
+    return 0

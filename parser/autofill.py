@@ -120,6 +120,8 @@ def fill(driver, input_data, mode, search_interval, kw_policy=None, okdp_policy=
     if mode is None:
         logging.error("No mode provided")
         sys.exit()
+    if input_data is None or not input_data:
+        return None
 
     search_url = FILTER_URL
 

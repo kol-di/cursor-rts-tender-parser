@@ -5,10 +5,14 @@ import time
 import logging
 from datetime import datetime
 from pathlib import Path
+import multiprocessing as mp
+from functools import partial
+from itertools import chain
 
-from parser.driver import init_driver
+from parser.driver import init_driver, quit_driver
 from parser.autofill import fill, get_input_data, WidgetType
-from parser.collector import collect, filter_unique
+from parser.collector import collect, filter_unique, output_collected
+from parser.utils import get_pid, chunk_into_n
 from db.connection import DBConnection
 
 
@@ -64,6 +68,24 @@ def _in_out_file_gen(input_folder, output_folder, out_prefix=''):
                 logging.warning(f"Can't read file {in_file_path}")
 
 
+def mp_kw_job(input_data, search_interval, kw_policy):
+    print(f'Драйвер {get_pid()}: поиск по словам {input_data}')
+
+    # fight mp map chunksize heuristic
+    if len(input_data) and isinstance(input_data[0], list):
+        input_data = list(chain(*input_data))
+
+    # driver object is global to each subprocess
+    from parser.driver import DRIVER
+    fill_res = fill(DRIVER, input_data, 'kw', search_interval, kw_policy=kw_policy)
+    if fill_res is not None:
+        collected = collect(DRIVER)
+    else:
+        collected = []
+    print(f'Драйвер {get_pid()}: собрано {len(collected)}')
+
+    return collected
+
 
 def main(argv):
     ap = get_args(argv)
@@ -72,9 +94,6 @@ def main(argv):
     db_conn = DBConnection(**conf['database'])
     print('Установлено соединение с БД')
 
-    driver = init_driver(headless=ap.headless=='y')
-    print('Драйвер подключен')
-
     # get common launch settings
     mode = getattr(ap, 'mode', None)
     search_interval = conf['runtime'].getint('search_interval_days')
@@ -82,47 +101,68 @@ def main(argv):
         search_interval = ap.search_interval_days
     output_folder = conf['data'].get('output_folder')
 
-    # launch in different modes with different params. None mode means launch everything
-    if mode is None or mode == 'kw':
-        input_folder = conf['data'].get('input_folder_keyword')
-        kw_policy = conf['runtime'].get('kw_search_policy')
-        if getattr(ap, 'kw_policy', None) is not None:
-            kw_policy = ap.kw_policy
+    with mp.Manager() as manager:
+        # spawn multiple drivers
+        num_proc = 2
+        with manager.Pool(processes=num_proc) as pool:
+            # create subprocesses with distinct drivers
+            driver_init_res = []
+            for _ in range(num_proc):
+                driver_init_res.append(pool.apply_async(init_driver, kwds={'headless': ap.headless=='y'}))
+            for res in driver_init_res:
+                res.get()
 
-        del_files = []
-        for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
-            print(f'Поиск по ключевым словам из файла {input_file}')
-            input_data = get_input_data(input_file)
-            fill(driver, input_data, 'kw', search_interval, kw_policy=kw_policy)
-            collect(driver, output_file, db_conn)
-            del_files.append(input_file)
-        for file in del_files:
-            file.unlink()
-        
+            # launch in different modes with different params. None mode means launch everything
+            if mode is None or mode == 'kw':
+                input_folder = conf['data'].get('input_folder_keyword')
+                kw_policy = conf['runtime'].get('kw_search_policy')
+                if getattr(ap, 'kw_policy', None) is not None:
+                    kw_policy = ap.kw_policy
 
-    if mode is None or mode == 'okpd':
-        input_folder = conf['data'].get('input_folder_okpd')
+                del_files = []
+                for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
+                    print(f'Поиск по ключевым словам из файла {input_file}')
+                    input_data = get_input_data(input_file)
 
-        del_files = []
-        for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
-            print(f'Поиск по кодам ОКПД из файла {input_file}')
-            input_data = get_input_data(input_file)
-            failure = fill(driver, input_data, 'okpd', search_interval, okdp_policy='tree')
-            # if all codes were not filled then search uses all codes, so we skip
-            if len(failure[WidgetType.NESTED_LIST]) < len(input_data):
-                collect(driver, output_file, db_conn) 
-            if failure[WidgetType.NESTED_LIST]:
-                for code in failure[WidgetType.NESTED_LIST]:
-                    fill(driver, code, 'okpd', search_interval, okdp_policy='text')
-                    collect(driver, output_file, db_conn)
-            filter_unique(output_file)
+                    mp_kw_job_partial = partial(mp_kw_job, search_interval=search_interval, kw_policy=kw_policy)
+                    chunks = chunk_into_n(input_data, num_proc)
+                    collected = pool.map(mp_kw_job_partial, chunks, 1)
+                    output_collected(output_file, list(chain(*collected)), db_conn)
 
-            del_files.append(input_file)
-        for file in del_files:
-            file.unlink()
+                    del_files.append(input_file)
+                for file in del_files:
+                    file.unlink()
+                
+
+            if mode is None or mode == 'okpd':
+                input_folder = conf['data'].get('input_folder_okpd')
+
+                del_files = []
+                for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
+                    print(f'Поиск по кодам ОКПД из файла {input_file}')
+                    input_data = get_input_data(input_file)
+                    failure = fill(driver, input_data, 'okpd', search_interval, okdp_policy='tree')
+                    # if all codes were not filled then search uses all codes, so we skip
+                    if len(failure[WidgetType.NESTED_LIST]) < len(input_data):
+                        collect(driver, output_file, db_conn) 
+                    if failure[WidgetType.NESTED_LIST]:
+                        for code in failure[WidgetType.NESTED_LIST]:
+                            fill(driver, code, 'okpd', search_interval, okdp_policy='text')
+                            collect(driver, output_file, db_conn)
+                        filter_unique(output_file)
+
+                    del_files.append(input_file)
+                for file in del_files:
+                    file.unlink()
+                    
+            # quit all drivers
+            driver_quit_res = []
+            for _ in range(num_proc):
+                driver_quit_res.append(pool.apply_async(quit_driver))
+            for res in driver_quit_res:
+                res.get()
 
     db_conn.close()
-    driver.quit()
 
 
 if __name__ == '__main__':

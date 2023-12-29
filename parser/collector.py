@@ -123,7 +123,7 @@ def progress_bar_len(driver, res_per_page=10):
     return int(count / res_per_page)
 
 
-def collect(driver, output_file, db_conn):
+def collect(driver, output_file=None, db_conn=None):
 
     with tqdm(total=progress_bar_len(driver)) as pbar:
         collected = []
@@ -137,11 +137,23 @@ def collect(driver, output_file, db_conn):
             next_page_numb += 1
             pbar.update(1)
 
-        new_collected = db_conn.get_new_numbers(collected)
-        if new_collected:
-            with open(output_file, 'a') as f:
-                for num in new_collected:
-                    print(num, file=f)
+        # new_collected = db_conn.get_new_numbers(collected)
+        # if new_collected:
+        #     with open(output_file, 'a') as f:
+        #         for num in new_collected:
+        #             print(num, file=f)
 
+    # print(f'Найдено {len(collected)}, из них {len(new_collected)} новых')
+    # return len(new_collected)
+    return collected
+
+
+def output_collected(output_file, collected, db_conn):
+    new_collected = db_conn.get_new_numbers(collected)
+    if new_collected:
+        with open(output_file, 'a') as f:
+            for num in new_collected:
+                print(num, file=f)
+    
     print(f'Найдено {len(collected)}, из них {len(new_collected)} новых')
-    return len(new_collected)
+    len(new_collected)
