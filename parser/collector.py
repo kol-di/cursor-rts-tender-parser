@@ -149,6 +149,7 @@ def collect(driver, output_file=None, db_conn=None):
 
 
 def output_collected(output_file, collected, db_conn):
+    collected = list(set(collected))
     new_collected = db_conn.get_new_numbers(collected)
     if new_collected:
         with open(output_file, 'a') as f:

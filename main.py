@@ -29,6 +29,8 @@ def get_args(argv):
                     help='Интервал поиска в днях. Конец интервала равен сегодняшней дате')
     ap.add_argument('--headless', required=False, choices=['y', 'n'], default='y',
                     help='Запуск без интерфейса')
+    ap.add_argument('--num-proc', required=False, type=int, 
+                    help='Количество запускаемых процессов')
     return ap.parse_args() 
 
 
@@ -77,11 +79,38 @@ def mp_kw_job(input_data, search_interval, kw_policy):
 
     # driver object is global to each subprocess
     from parser.driver import DRIVER
+
+    collected = []
     fill_res = fill(DRIVER, input_data, 'kw', search_interval, kw_policy=kw_policy)
     if fill_res is not None:
         collected = collect(DRIVER)
-    else:
-        collected = []
+
+    print(f'Драйвер {get_pid()}: собрано {len(collected)}')
+
+    return collected
+
+
+def mp_okpd_job(input_data, search_interval):
+    print(f'Драйвер {get_pid()}: поиск по кодам {input_data}')
+
+    # fight mp map chunksize heuristic
+    if len(input_data) and isinstance(input_data[0], list):
+        input_data = list(chain(*input_data))
+
+    # driver object is global to each subprocess
+    from parser.driver import DRIVER
+
+    collected = []
+    fill_res = fill(DRIVER, input_data, 'okpd', search_interval, okdp_policy='tree')
+    if fill_res is not None:
+        # if all codes were not filled then search uses all codes, so we skip
+        if len(fill_res[WidgetType.NESTED_LIST]) < len(input_data):
+            collected.extend(collect(DRIVER))
+        if fill_res[WidgetType.NESTED_LIST]:
+            for code in fill_res[WidgetType.NESTED_LIST]:
+                fill(DRIVER, code, 'okpd', search_interval, okdp_policy='text')
+                collected.extend(collect(DRIVER))
+    
     print(f'Драйвер {get_pid()}: собрано {len(collected)}')
 
     return collected
@@ -96,6 +125,9 @@ def main(argv):
 
     # get common launch settings
     mode = getattr(ap, 'mode', None)
+    num_proc = conf['runtime'].getint('num_proc')
+    if getattr(ap, 'num_proc', None) is not None:
+        num_proc = ap.num_proc 
     search_interval = conf['runtime'].getint('search_interval_days')
     if getattr(ap, 'search_interval_days', None) is not None:
         search_interval = ap.search_interval_days
@@ -103,64 +135,66 @@ def main(argv):
 
     with mp.Manager() as manager:
         # spawn multiple drivers
-        num_proc = 2
         with manager.Pool(processes=num_proc) as pool:
-            # create subprocesses with distinct drivers
-            driver_init_res = []
-            for _ in range(num_proc):
-                driver_init_res.append(pool.apply_async(init_driver, kwds={'headless': ap.headless=='y'}))
-            for res in driver_init_res:
-                res.get()
+            try:
+                # create subprocesses with distinct drivers
+                driver_init_res = []
+                for _ in range(num_proc):
+                    driver_init_res.append(pool.apply_async(init_driver, kwds={'headless': ap.headless=='y'}))
+                for res in driver_init_res:
+                    res.get()
 
-            # launch in different modes with different params. None mode means launch everything
-            if mode is None or mode == 'kw':
-                input_folder = conf['data'].get('input_folder_keyword')
-                kw_policy = conf['runtime'].get('kw_search_policy')
-                if getattr(ap, 'kw_policy', None) is not None:
-                    kw_policy = ap.kw_policy
+                # launch in different modes with different params. None mode means launch everything
+                if mode is None or mode == 'kw':
+                    input_folder = conf['data'].get('input_folder_keyword')
+                    kw_policy = conf['runtime'].get('kw_search_policy')
+                    if getattr(ap, 'kw_policy', None) is not None:
+                        kw_policy = ap.kw_policy
 
-                del_files = []
-                for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
-                    print(f'Поиск по ключевым словам из файла {input_file}')
-                    input_data = get_input_data(input_file)
+                    del_files = []
+                    for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_словам_'):
+                        print(f'Поиск по ключевым словам из файла {input_file}')
+                        input_data = get_input_data(input_file)
 
-                    mp_kw_job_partial = partial(mp_kw_job, search_interval=search_interval, kw_policy=kw_policy)
-                    chunks = chunk_into_n(input_data, num_proc)
-                    collected = pool.map(mp_kw_job_partial, chunks, 1)
-                    output_collected(output_file, list(chain(*collected)), db_conn)
-
-                    del_files.append(input_file)
-                for file in del_files:
-                    file.unlink()
-                
-
-            if mode is None or mode == 'okpd':
-                input_folder = conf['data'].get('input_folder_okpd')
-
-                del_files = []
-                for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
-                    print(f'Поиск по кодам ОКПД из файла {input_file}')
-                    input_data = get_input_data(input_file)
-                    failure = fill(driver, input_data, 'okpd', search_interval, okdp_policy='tree')
-                    # if all codes were not filled then search uses all codes, so we skip
-                    if len(failure[WidgetType.NESTED_LIST]) < len(input_data):
-                        collect(driver, output_file, db_conn) 
-                    if failure[WidgetType.NESTED_LIST]:
-                        for code in failure[WidgetType.NESTED_LIST]:
-                            fill(driver, code, 'okpd', search_interval, okdp_policy='text')
-                            collect(driver, output_file, db_conn)
+                        mp_kw_job_partial = partial(mp_kw_job, search_interval=search_interval, kw_policy=kw_policy)
+                        chunks = chunk_into_n(input_data, num_proc)
+                        collected = pool.map(mp_kw_job_partial, chunks, 1)
+                        output_collected(output_file, list(chain(*collected)), db_conn)
                         filter_unique(output_file)
 
-                    del_files.append(input_file)
-                for file in del_files:
-                    file.unlink()
+                        del_files.append(input_file)
+                    # for file in del_files:
+                    #     file.unlink()
                     
-            # quit all drivers
-            driver_quit_res = []
-            for _ in range(num_proc):
-                driver_quit_res.append(pool.apply_async(quit_driver))
-            for res in driver_quit_res:
-                res.get()
+
+                if mode is None or mode == 'okpd':
+                    input_folder = conf['data'].get('input_folder_okpd')
+
+                    del_files = []
+                    for (input_file, output_file) in _in_out_file_gen(input_folder, output_folder, 'по_окпд_'):
+                        print(f'Поиск по кодам ОКПД из файла {input_file}')
+                        input_data = get_input_data(input_file)
+
+                        okpd_kw_job_partial = partial(mp_okpd_job, search_interval=search_interval)
+                        chunks = chunk_into_n(input_data, num_proc)
+                        collected = pool.map(okpd_kw_job_partial, chunks, 1)
+                        output_collected(output_file, list(chain(*collected)), db_conn)
+                        filter_unique(output_file)
+
+                        del_files.append(input_file)
+                    # for file in del_files:
+                    #     file.unlink()
+                        
+            finally:
+                # quit all drivers
+                driver_quit_res = []
+                for _ in range(num_proc):
+                    driver_quit_res.append(pool.apply_async(quit_driver))
+                for res in driver_quit_res:
+                    res.get()
+
+                pool.terminate()
+                pool.join()
 
     db_conn.close()
 
