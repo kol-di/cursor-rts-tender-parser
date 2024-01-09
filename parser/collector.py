@@ -9,7 +9,7 @@ from selenium.common.exceptions import (
 import re
 from typing import Tuple, Callable
 
-from .utils import xpath_soup, native_click
+from .utils import xpath_soup, native_click, get_pid
 
 
 def filter_unique(path):
@@ -142,5 +142,5 @@ def output_collected(output_file, collected, db_conn):
             for num in new_collected:
                 print(num, file=f)
     
-    print(f'Найдено {len(collected)}, из них {len(new_collected)} новых')
+    print(f'Найдено {len(collected)} уникальных, из них {len(new_collected)} новых')
     len(new_collected)

@@ -30,6 +30,7 @@ def init_driver(headless=True):
     
     options.accept_insecure_certs = True
     driver = webdriver.Chrome(service=service, options=options)
+    # driver.set_page_load_timeout(10)
     driver.get(WEBSITE_URL)
     driver.execute_script(r"Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     time.sleep(10)

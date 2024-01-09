@@ -16,6 +16,7 @@ import logging
 import sys
 import chardet
 from pathlib import Path
+from concurrent import futures
 
 from .utils import xpath_soup, native_click, get_pid
 
@@ -149,7 +150,14 @@ def fill(driver, input_data, mode, search_interval, kw_policy=None, okdp_policy=
         search_params)
     
     # wait redirect
-    WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
+    # WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
+
+    try:
+        WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
+    except TimeoutException:
+        print(f'Драйвер {get_pid()}: первышен лимит времени при переходе на страницу результатов. Перезапускаю заполнение параметров')
+        driver.refresh()
+        return fill(driver, input_data, mode, search_interval, kw_policy, okdp_policy)
 
     return failure
 
@@ -377,11 +385,33 @@ def click_search(driver):
 
 
 def fill_search_params(driver, search_url, search_params):
-    driver.get(search_url)
+    try:
+        driver.get(search_url)
+        # refresh if filter page load is stuck
+        WebDriverWait(driver, 10).until(EC.text_to_be_present_in_element_attribute(
+            (By.CLASS_NAME, 'consultation_modal'), 'style', 'display: none'))
+    except TimeoutException:
+        print(f'Драйвер {get_pid()}: превышен лимит времени при переходе на страницу фильтров. Перезапускаю заполнение параметров')
+        driver.refresh()
+        return fill_search_params(driver, search_url, search_params)
+
+    # print(f'driver {get_pid()} redirected to serach_url')
     # the below functions need to be called separately to recreate soup each time
-    uncollapse_options(driver)
+
+    with futures.ThreadPoolExecutor() as executor:    
+        future = executor.submit(uncollapse_options, driver)
+        try:
+            future.result(timeout=10)
+        except futures.TimeoutError:
+            print(f'Драйвер {get_pid()}: превышен лимит времени при первичном заполнении параметров. Перезапускаю заполнение параметров')
+            driver.refresh()
+            return fill_search_params(driver, search_url, search_params)
+            
     show_more(driver)
     remove_selection(driver)
+
+
+    # print(f'driver {get_pid()} is ready to fill')
 
     # store fill success/failure results
     fill_failure = {}
