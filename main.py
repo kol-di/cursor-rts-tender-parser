@@ -16,7 +16,7 @@ from parser.utils import get_pid, chunk_into_n
 from db.connection import DBConnection
 
 
-CONFIG_PATH = '.\conf.ini'
+CONFIG_PATH = r'.\conf.ini'
 
 
 def get_args(argv):
