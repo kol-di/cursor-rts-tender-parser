@@ -8,6 +8,7 @@ from pathlib import Path
 import multiprocessing as mp
 from functools import partial
 from itertools import chain
+import traceback
 
 from parser.driver import init_driver, quit_driver
 from parser.autofill import fill, get_input_data, WidgetType
@@ -71,49 +72,55 @@ def _in_out_file_gen(input_folder, output_folder, out_prefix=''):
 
 
 def mp_kw_job(input_data, search_interval, kw_policy):
-    print(f'Драйвер {get_pid()}: поиск по словам {input_data}')
+    try:
+        print(f'Драйвер {get_pid()}: поиск по словам {input_data}')
 
-    # fight mp map chunksize heuristic
-    if len(input_data) and isinstance(input_data[0], list):
-        input_data = list(chain(*input_data))
+        # fight mp map chunksize heuristic
+        if len(input_data) and isinstance(input_data[0], list):
+            input_data = list(chain(*input_data))
 
-    # driver object is global to each subprocess
-    from parser.driver import DRIVER
+        # driver object is global to each subprocess
+        from parser.driver import DRIVER
 
-    collected = []
-    fill_res = fill(DRIVER, input_data, 'kw', search_interval, kw_policy=kw_policy)
-    if fill_res is not None:
-        collected = collect(DRIVER)
+        collected = []
+        fill_res = fill(DRIVER, input_data, 'kw', search_interval, kw_policy=kw_policy)
+        if fill_res is not None:
+            collected = collect(DRIVER)
 
-    print(f'Драйвер {get_pid()}: собрано {len(collected)}')
-
-    return collected
+        print(f'Драйвер {get_pid()}: собрано {len(collected)}')
+        return collected
+    
+    except:
+        raise Exception(f"Драйвер {get_pid()}:\n" + "".join(traceback.format_exception(*sys.exc_info()))) 
 
 
 def mp_okpd_job(input_data, search_interval):
-    print(f'Драйвер {get_pid()}: поиск по кодам {input_data}')
+    try:
+        print(f'Драйвер {get_pid()}: поиск по кодам {input_data}')
 
-    # fight mp map chunksize heuristic
-    if len(input_data) and isinstance(input_data[0], list):
-        input_data = list(chain(*input_data))
+        # fight mp map chunksize heuristic
+        if len(input_data) and isinstance(input_data[0], list):
+            input_data = list(chain(*input_data))
 
-    # driver object is global to each subprocess
-    from parser.driver import DRIVER
+        # driver object is global to each subprocess
+        from parser.driver import DRIVER
 
-    collected = []
-    fill_res = fill(DRIVER, input_data, 'okpd', search_interval, okdp_policy='tree')
-    if fill_res is not None:
-        # if all codes were not filled then search uses all codes, so we skip
-        if len(fill_res[WidgetType.NESTED_LIST]) < len(input_data):
-            collected.extend(collect(DRIVER))
-        if fill_res[WidgetType.NESTED_LIST]:
-            for code in fill_res[WidgetType.NESTED_LIST]:
-                fill(DRIVER, code, 'okpd', search_interval, okdp_policy='text')
+        collected = []
+        fill_res = fill(DRIVER, input_data, 'okpd', search_interval, okdp_policy='tree')
+        if fill_res is not None:
+            # if all codes were not filled then search uses all codes, so we skip
+            if len(fill_res[WidgetType.NESTED_LIST]) < len(input_data):
                 collected.extend(collect(DRIVER))
+            if fill_res[WidgetType.NESTED_LIST]:
+                for code in fill_res[WidgetType.NESTED_LIST]:
+                    fill(DRIVER, code, 'okpd', search_interval, okdp_policy='text')
+                    collected.extend(collect(DRIVER))
+        
+        print(f'Драйвер {get_pid()}: собрано {len(collected)}')
+        return collected
     
-    print(f'Драйвер {get_pid()}: собрано {len(collected)}')
-
-    return collected
+    except:
+        raise Exception(f"Драйвер {get_pid()}:\n" + "".join(traceback.format_exception(*sys.exc_info())))
 
 
 def main(argv):

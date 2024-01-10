@@ -3,7 +3,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 import selenium.webdriver.support.expected_conditions as EC
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 from bs4 import BeautifulSoup
 from dataclasses import dataclass, field
 import dataclasses
@@ -181,11 +181,11 @@ def _nested_list_dfs(ul, code, is_root=False):
                 if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1]) and label.endswith('0')):
                     if code == label:
                         return li.find_element(By.TAG_NAME, 'label')
-                    ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                    ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                     if (ret := _nested_list_dfs(ul, code)) is not None:
                         return ret
             else:
-                ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 root_match = _nested_list_dfs(ul, code)
                 if root_match is not None:
                     return root_match
@@ -224,7 +224,7 @@ def _code_searchbox_input(code, searchbox, driver):
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
     if el is None:
-        print(f"No parameter to fill for type {search_entry.type.name}")
+        print(f"No parameter to fill for type {search_entry.name}")
         # logging.warning(f"No parameter to fill for type {search_entry.type.name}")
 
     # return options which cant be filled
@@ -370,7 +370,11 @@ def get_modal_settings_row(filter_option, search_entry: SearchEntry):
                     # LIST type widgets also contain checkbox grid, but with extra buttons
                     if 'свернуть' in str.lower(msr_a.get_text()):
                         # nested msr in LIST type
-                        return msr.find("div", {"class", "modal-settings-row"})
+                        if (msr_res := msr.find("div", {"class", "modal-settings-row"})) is not None:
+                            return msr_res
+                        else:
+                            print('No modal settings row for type LIST')
+                            raise Exception
         # for NESTED_LIST there's no msr but we return the deepest definitve structure
         case WidgetType.NESTED_LIST:
             return filter_option
@@ -385,31 +389,36 @@ def click_search(driver):
 
 
 def fill_search_params(driver, search_url, search_params):
-    try:
-        driver.get(search_url)
-        # refresh if filter page load is stuck
-        WebDriverWait(driver, 10).until(EC.text_to_be_present_in_element_attribute(
-            (By.CLASS_NAME, 'consultation_modal'), 'style', 'display: none'))
-    except TimeoutException:
-        print(f'Драйвер {get_pid()}: превышен лимит времени при переходе на страницу фильтров. Перезапускаю заполнение параметров')
-        driver.refresh()
-        return fill_search_params(driver, search_url, search_params)
+    # try:
+    #     driver.get(search_url)
+    #     # refresh if filter page load is stuck
+    #     WebDriverWait(driver, 10).until(EC.text_to_be_present_in_element_attribute(
+    #         (By.CLASS_NAME, 'consultation_modal'), 'style', 'display: none'))
+    # except TimeoutException:
+    #     print(f'Драйвер {get_pid()}: превышен лимит времени при переходе на страницу фильтров. Перезапускаю заполнение параметров')
+    #     driver.refresh()
+    #     return fill_search_params(driver, search_url, search_params)
 
     # print(f'driver {get_pid()} redirected to serach_url')
     # the below functions need to be called separately to recreate soup each time
 
+    def __fill_prep(driver, search_url):
+        driver.get(search_url)
+        WebDriverWait(driver, 10).until(EC.text_to_be_present_in_element_attribute(
+            (By.CLASS_NAME, 'consultation_modal'), 'style', 'display: none'))
+
+        uncollapse_options(driver)
+        show_more(driver)
+        remove_selection(driver)    
+
     with futures.ThreadPoolExecutor() as executor:    
-        future = executor.submit(uncollapse_options, driver)
+        future = executor.submit(__fill_prep, driver, search_url)
         try:
-            future.result(timeout=10)
-        except futures.TimeoutError:
-            print(f'Драйвер {get_pid()}: превышен лимит времени при первичном заполнении параметров. Перезапускаю заполнение параметров')
+            future.result(timeout=20)
+        except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException):
+            print(f'Драйвер {get_pid()}: не удалось подготовить фильтры для заполнения. Перезапускаю заполнение')
             driver.refresh()
             return fill_search_params(driver, search_url, search_params)
-            
-    show_more(driver)
-    remove_selection(driver)
-
 
     # print(f'driver {get_pid()} is ready to fill')
 
