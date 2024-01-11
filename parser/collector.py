@@ -81,7 +81,7 @@ def collect_page_contents(driver):
     content_interact = WebDriverWait(driver, 5).until(EC.visibility_of_element_located((By.ID, 'content')))
     # content_interact = driver.find_element(By.ID, 'content')
     try:
-        WebDriverWait(content_interact, 5).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "card-item")))
+        WebDriverWait(content_interact, 3).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, "card-item")))
     except TimeoutException:    # if no card items then search result is empty
         return collected
 
@@ -136,6 +136,7 @@ def collect(driver):
 
 def output_collected(output_file, collected, db_conn):
     collected = list(set(collected))
+    collected = [num for num in collected if (len(num) == 19) or (len(num) == 11 and num.startswith('3'))]
     new_collected = db_conn.get_new_numbers(collected)
     if new_collected:
         with open(output_file, 'a') as f:

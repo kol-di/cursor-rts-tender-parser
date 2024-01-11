@@ -77,7 +77,7 @@ class SearchParams:
         self.trade_platforms: SearchEntry = SearchEntry(
             name='торговая площадка', 
             type=WidgetType.LIST, 
-            options=['РТС-тендер', 'АО "РАД"', 'АО «ЕЭТП»', 'АГЗ РТ', 'АО «Сбербанк-АСТ»', 'лектронная Торговая Площадка 223', 'ЭТП ТЭК-Торг', 'Электронная торговая площадка «Фабрикант»', 'ЭТП Газпромбанк']
+            options=[]
         )
         self.regulation: SearchEntry = SearchEntry(
             name='правило проведения', 
@@ -181,11 +181,11 @@ def _nested_list_dfs(ul, code, is_root=False):
                 if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1]) and label.endswith('0')):
                     if code == label:
                         return li.find_element(By.TAG_NAME, 'label')
-                    ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                    ul = WebDriverWait(li, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                     if (ret := _nested_list_dfs(ul, code)) is not None:
                         return ret
             else:
-                ul = WebDriverWait(li, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                ul = WebDriverWait(li, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 root_match = _nested_list_dfs(ul, code)
                 if root_match is not None:
                     return root_match
@@ -224,7 +224,8 @@ def _code_searchbox_input(code, searchbox, driver):
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
     if el is None:
-        print(f"No parameter to fill for type {search_entry.name}")
+        print(f"Драйвер {get_pid()}: не удалось заполнить параметр {search_entry.name}")
+        return
         # logging.warning(f"No parameter to fill for type {search_entry.type.name}")
 
     # return options which cant be filled
@@ -372,12 +373,16 @@ def get_modal_settings_row(filter_option, search_entry: SearchEntry):
                         # nested msr in LIST type
                         if (msr_res := msr.find("div", {"class", "modal-settings-row"})) is not None:
                             return msr_res
-                        else:
-                            print('No modal settings row for type LIST')
-                            raise Exception
+                        # else:
+                        #     print('No modal settings row for type LIST')
+                        #     raise Exception
         # for NESTED_LIST there's no msr but we return the deepest definitve structure
         case WidgetType.NESTED_LIST:
             return filter_option
+        case _:
+            pass
+        
+    print(f'Драйвер {get_pid()}: no modal settings row for {search_entry.name}')
         
 
 def click_search(driver):
@@ -436,7 +441,8 @@ def fill_search_params(driver, search_url, search_params):
         try:
             filter_title_el_text = filter_title_el.get_text()
         except AttributeError:
-            print(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
+            pass
+            # print(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
             # logging.error(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
 
         # look for match of input field title with our options
