@@ -82,7 +82,7 @@ class SearchParams:
         self.regulation: SearchEntry = SearchEntry(
             name='правило проведения', 
             type=WidgetType.GRID, 
-            options=['44-фз']
+            options=['223-фз']
         )
         self.publish_date: SearchEntry = SearchEntry(
             name='фильтры по датам', 
@@ -101,6 +101,10 @@ class SearchParams:
             type=WidgetType.TEXT, 
             options=[]
         )
+
+
+class FillError(Exception):
+    pass
 
 
 def get_input_data(input):
@@ -148,9 +152,6 @@ def fill(driver, input_data, mode, search_interval, kw_policy=None, okdp_policy=
         driver, 
         search_url,
         search_params)
-    
-    # wait redirect
-    # WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
 
     try:
         WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
@@ -273,7 +274,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 for code in search_entry.options:
                     checkbox = _nested_list_dfs(ul, code, is_root=True)
                     if checkbox is not None:
-                        print(f'Найден код {code}')
+                        print(f'Найден код {code} в дереве')
                         checkbox.click()
                     else:
                         print(f'Не удалось найти код {code} в дереве')
@@ -285,7 +286,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 code = search_entry.options
                 assert isinstance(code, str)
                 _code_searchbox_input(code, searchbox_interact, driver)
-                print(f'Найден код {code}')
+                print(f'Найден код {code} в текстовом поиске')
 
         case WidgetType.TEXT:
             input_interact = driver.find_element(By.XPATH, xpath_soup(el))
@@ -312,6 +313,13 @@ def show_more(driver):
 
 def uncollapse_options(driver):
     """Make collapsed options visible"""
+    try:
+        WebDriverWait(driver, 2).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, 'title-collapse--more')))
+        WebDriverWait(driver, 2).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, 'title-collapse--less')))
+    except TimeoutException:
+        print(f'Драйвер {get_pid()}: не удалось найти все опции фильтра')
+        # uncollapse_options(driver)
+        raise FillError
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
     filter_options = filter_el.find_all("div", {"class": "modal-settings-section"})
@@ -378,6 +386,7 @@ def get_modal_settings_row(filter_option, search_entry: SearchEntry):
                         #     raise Exception
         # for NESTED_LIST there's no msr but we return the deepest definitve structure
         case WidgetType.NESTED_LIST:
+            print('got msr for NESTED_LSIT')
             return filter_option
         case _:
             pass
@@ -420,7 +429,7 @@ def fill_search_params(driver, search_url, search_params):
         future = executor.submit(__fill_prep, driver, search_url)
         try:
             future.result(timeout=20)
-        except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException):
+        except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException, FillError):
             print(f'Драйвер {get_pid()}: не удалось подготовить фильтры для заполнения. Перезапускаю заполнение')
             driver.refresh()
             return fill_search_params(driver, search_url, search_params)

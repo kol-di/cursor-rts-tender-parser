@@ -8,8 +8,16 @@ from selenium.common.exceptions import (
     StaleElementReferenceException)
 import re
 from typing import Tuple, Callable
+from dataclasses import dataclass
 
 from .utils import xpath_soup, native_click, get_pid
+
+
+@dataclass
+class CollectRes:
+    notif_num: str
+    noticeinfoid: str = ''
+    pfid: str = ''
 
 
 def filter_unique(path):
@@ -71,10 +79,14 @@ def next_page(driver, page_num):
 
 
 def _clean_label(txt):
-    return re.search(r"№?(\d+)", txt).group(1)
+    return re.search(r"№\s?(\d+)", txt).group(1)
 
 
 def collect_page_contents(driver):
+    """
+    Returns page contents in the form of list of tuples (number, url)
+    return: Tuple[str, str]
+    """
     collected = []
 
     # card items dont seem to appear immidiately
@@ -89,10 +101,47 @@ def collect_page_contents(driver):
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     content = soup.find('div', {'id': 'content'})
     for card in content.find_all('div', {'class': 'card-item'}):
-        label = card.find('div', {'class': 'card-item__about'}).find('a').get_text()
-        collected.append(_clean_label(label))
+        url_tag = card.find('div', {'class': 'card-item__about'}).find('a')
+        href = url_tag.get('href')
+        notif_num = url_tag.get_text()
+        collected.append((_clean_label(notif_num), href))
 
     return collected
+
+
+def collect_num_info(driver, num_url):
+    notif_num, url = num_url
+
+    # redirect
+    driver.get(url)
+    try:
+        WebDriverWait(driver, 4).until(lambda driver: 'zakupki' in driver.current_url)
+    except TimeoutException:
+        print(f'Драйвер {get_pid()}: ссылка для извещения {notif_num} не ведет на сайт закупок')
+        return CollectRes(notif_num)
+
+    # get noticeinfoid
+    current_url = driver.current_url
+    url_noticeinfoid = re.search(r"noticeInfoId=(\d+)", current_url)
+    if url_noticeinfoid is None:
+        print(f'Драйвер {get_pid()}: извещения {notif_num} нет на сайте закупок')
+        return CollectRes(notif_num)
+    noticeinfoid = url_noticeinfoid.group(1)
+    
+    # get pfid
+    try:
+        pfid_candidate_tags = WebDriverWait(driver, 5).until(EC.visibility_of_element_located(
+            (By.CLASS_NAME, 'search-results'))).find_element(
+                By.CLASS_NAME, 'registry-entry__header-top__icon').find_elements(
+                    By.TAG_NAME, 'a')
+        pfid_tag = [tag for tag in pfid_candidate_tags if 'pfid' in tag.get_attribute('href')][0]
+        pfid_url = pfid_tag.get_attribute('href')
+        pfid = re.search(r"pfid=(\d+)", pfid_url).group(1)
+    except TimeoutException:
+        driver.refresh()
+        return collect_num_info(driver, num_url)
+
+    return CollectRes(notif_num, noticeinfoid, pfid)
 
 
 def element_text_is_not_empty(locator: Tuple[str, str]) -> Callable:
@@ -135,13 +184,15 @@ def collect(driver):
 
 
 def output_collected(output_file, collected, db_conn):
-    collected = list(set(collected))
-    collected = [num for num in collected if (len(num) == 19) or (len(num) == 11 and num.startswith('3'))]
+    collected = [col for col in collected if (len(col.notif_num) == 19) or 
+                                             (len(col.notif_num) == 11 and col.notif_num.startswith('3'))]
     new_collected = db_conn.get_new_numbers(collected)
     if new_collected:
         with open(output_file, 'a') as f:
-            for num in new_collected:
-                print(num, file=f)
+            for col in new_collected:
+                col_res_nonempty = [num for num in [col.notif_num, col.noticeinfoid, col.pfid] if num != '']
+                print_str = ';'.join([num for num in col_res_nonempty])
+                print(print_str, file=f)
     
     print(f'Найдено {len(collected)} уникальных, из них {len(new_collected)} новых')
     len(new_collected)

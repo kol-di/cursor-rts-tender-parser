@@ -12,7 +12,7 @@ import traceback
 
 from parser.driver import init_driver, quit_driver
 from parser.autofill import fill, get_input_data, WidgetType
-from parser.collector import collect, filter_unique, output_collected
+from parser.collector import collect, filter_unique, output_collected, collect_num_info
 from parser.utils import get_pid, chunk_into_n
 from db.connection import DBConnection
 
@@ -121,6 +121,28 @@ def mp_okpd_job(input_data, search_interval):
     
     except:
         raise Exception(f"Драйвер {get_pid()}:\n" + "".join(traceback.format_exception(*sys.exc_info())))
+    
+
+def parse_nums_info_job(input_data):
+    try:
+        print(f'Драйвер {get_pid()}: обрабатываю данные с закупок')
+
+        # fight mp map chunksize heuristic
+        if len(input_data) and isinstance(input_data[0], list):
+            input_data = list(chain(*input_data))
+
+        # driver object is global to each subprocess
+        from parser.driver import DRIVER
+
+        collected = []
+        for num_url in input_data:
+            collected.append(collect_num_info(DRIVER, num_url))
+
+        return collected
+    
+    except:
+        raise Exception(f"Драйвер {get_pid()}:\n" + "".join(traceback.format_exception(*sys.exc_info())))
+    
 
 
 def main(argv):
@@ -164,9 +186,13 @@ def main(argv):
                         input_data = get_input_data(input_file)
 
                         mp_kw_job_partial = partial(mp_kw_job, search_interval=search_interval, kw_policy=kw_policy)
-                        chunks = chunk_into_n(input_data, num_proc)
-                        collected = pool.map(mp_kw_job_partial, chunks, 1)
-                        output_collected(output_file, list(chain(*collected)), db_conn)
+                        chunks_urls = chunk_into_n(input_data, num_proc)
+                        collected_num_url = pool.map(mp_kw_job_partial, chunks_urls, 1)
+                        collected_num_url = list(set(chain(*collected_num_url)))
+                        
+                        chunks_info = chunk_into_n(collected_num_url, num_proc)
+                        collected_info = pool.map(parse_nums_info_job, chunks_info, 1)
+                        output_collected(output_file, list(chain(*collected_info)), db_conn)
                         filter_unique(output_file)
 
                     #     del_files.append(input_file)
@@ -183,9 +209,13 @@ def main(argv):
                         input_data = get_input_data(input_file)
 
                         okpd_kw_job_partial = partial(mp_okpd_job, search_interval=search_interval)
-                        chunks = chunk_into_n(input_data, num_proc)
-                        collected = pool.map(okpd_kw_job_partial, chunks, 1)
-                        output_collected(output_file, list(chain(*collected)), db_conn)
+                        chunks_urls = chunk_into_n(input_data, num_proc)
+                        collected_num_url = pool.map(okpd_kw_job_partial, chunks_urls, 1)
+                        collected_num_url = list(set(chain(*collected_num_url)))
+
+                        chunks_info = chunk_into_n(collected_num_url, num_proc)
+                        collected_info = pool.map(parse_nums_info_job, chunks_info, 1)
+                        output_collected(output_file, list(chain(*collected_info)), db_conn)
                         filter_unique(output_file)
 
                     #     del_files.append(input_file)
