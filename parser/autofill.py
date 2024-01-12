@@ -103,6 +103,10 @@ class SearchParams:
         )
 
 
+class FillError(Exception):
+    pass
+
+
 def get_input_data(input):
     if isinstance(input, Path):
         with open(input, 'rb') as f:
@@ -273,7 +277,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 for code in search_entry.options:
                     checkbox = _nested_list_dfs(ul, code, is_root=True)
                     if checkbox is not None:
-                        print(f'Найден код {code}')
+                        print(f'Найден код {code} в дереве')
                         checkbox.click()
                     else:
                         print(f'Не удалось найти код {code} в дереве')
@@ -285,7 +289,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 code = search_entry.options
                 assert isinstance(code, str)
                 _code_searchbox_input(code, searchbox_interact, driver)
-                print(f'Найден код {code}')
+                print(f'Найден код {code} в строке поиска')
 
         case WidgetType.TEXT:
             input_interact = driver.find_element(By.XPATH, xpath_soup(el))
@@ -312,6 +316,14 @@ def show_more(driver):
 
 def uncollapse_options(driver):
     """Make collapsed options visible"""
+    try:
+        WebDriverWait(driver, 2).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, 'title-collapse--more')))
+        WebDriverWait(driver, 2).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, 'title-collapse--less')))
+    except TimeoutException:
+        print(f'Драйвер {get_pid()}: не удалось найти все опции фильтра')
+        # uncollapse_options(driver)
+        raise FillError
+    
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
     filter_options = filter_el.find_all("div", {"class": "modal-settings-section"})
@@ -420,7 +432,7 @@ def fill_search_params(driver, search_url, search_params):
         future = executor.submit(__fill_prep, driver, search_url)
         try:
             future.result(timeout=20)
-        except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException):
+        except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException, FillError):
             print(f'Драйвер {get_pid()}: не удалось подготовить фильтры для заполнения. Перезапускаю заполнение')
             driver.refresh()
             return fill_search_params(driver, search_url, search_params)
