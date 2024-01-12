@@ -386,7 +386,6 @@ def get_modal_settings_row(filter_option, search_entry: SearchEntry):
                         #     raise Exception
         # for NESTED_LIST there's no msr but we return the deepest definitve structure
         case WidgetType.NESTED_LIST:
-            print('got msr for NESTED_LSIT')
             return filter_option
         case _:
             pass
