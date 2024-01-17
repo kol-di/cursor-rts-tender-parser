@@ -9,6 +9,7 @@ import multiprocessing as mp
 from functools import partial
 from itertools import chain
 import traceback
+from webdriver_manager.chrome import ChromeDriverManager
 
 from parser.driver import init_driver, quit_driver
 from parser.autofill import fill, get_input_data, WidgetType
@@ -140,6 +141,9 @@ def main(argv):
         search_interval = ap.search_interval_days
     output_folder = conf['data'].get('output_folder')
 
+    # install latest chromedriver version
+    driver_path = ChromeDriverManager().install()
+
     with mp.Manager() as manager:
         # spawn multiple drivers
         with manager.Pool(processes=num_proc) as pool:
@@ -147,7 +151,9 @@ def main(argv):
                 # create subprocesses with distinct drivers
                 driver_init_res = []
                 for _ in range(num_proc):
-                    driver_init_res.append(pool.apply_async(init_driver, kwds={'headless': ap.headless=='y'}))
+                    driver_init_res.append(pool.apply_async(
+                        init_driver, 
+                        kwds={'driver_path': driver_path, 'headless': ap.headless=='y'}))
                 for res in driver_init_res:
                     res.get()
 
