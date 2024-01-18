@@ -103,7 +103,13 @@ class SearchParams:
         )
 
 
-class FillError(Exception):
+class ParserError(Exception):
+    pass
+
+class FillError(ParserError):
+    pass
+
+class FillRetryEndless(ParserError):
     pass
 
 
@@ -424,14 +430,21 @@ def fill_search_params(driver, search_url, search_params):
         show_more(driver)
         remove_selection(driver)    
 
-    with futures.ThreadPoolExecutor() as executor:    
-        future = executor.submit(__fill_prep, driver, search_url)
-        try:
-            future.result(timeout=20)
-        except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException, FillError):
-            print(f'Драйвер {get_pid()}: не удалось подготовить фильтры для заполнения. Перезапускаю заполнение')
-            driver.refresh()
-            return fill_search_params(driver, search_url, search_params)
+    no_err = False
+    err_cnt, max_err_cnt = 0, 10
+    while no_err != True and err_cnt < max_err_cnt:
+
+        with futures.ThreadPoolExecutor() as executor:    
+            future = executor.submit(__fill_prep, driver, search_url)
+            try:
+                future.result(timeout=20)
+                no_err = True
+            except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException, FillError):
+                print(f'Драйвер {get_pid()}: не удалось подготовить фильтры для заполнения. Перезапускаю заполнение')
+                driver.refresh()
+                err_cnt += 1
+    if err_cnt == max_err_cnt:
+        raise FillRetryEndless
 
     # print(f'driver {get_pid()} is ready to fill')
 
