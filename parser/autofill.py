@@ -82,7 +82,7 @@ class SearchParams:
         self.regulation: SearchEntry = SearchEntry(
             name='правило проведения', 
             type=WidgetType.GRID, 
-            options=['223-фз']
+            options=[]
         )
         self.publish_date: SearchEntry = SearchEntry(
             name='фильтры по датам', 
@@ -127,7 +127,7 @@ def get_input_data(input):
     return input_data
 
 
-def fill(driver, input_data, mode, search_interval, kw_policy=None, okdp_policy=None):
+def fill(driver, input_data, mode, fz, search_interval, kw_policy=None, okdp_policy=None):
     if mode is None:
         print("No mode provided")
         # logging.error("No mode provided")
@@ -153,6 +153,13 @@ def fill(driver, input_data, mode, search_interval, kw_policy=None, okdp_policy=
             search_params.okpd.extra = 'tree'
         if okdp_policy == 'text':
             search_params.okpd.extra = 'text'
+
+    if fz is None:
+        search_params.regulation.options = ['44-фз', '223-фз']
+    elif fz == '44':
+        search_params.regulation.options = ['44-фз']
+    elif fz == '223':
+        search_params.regulation.options = ['223-фз']
 
     failure = fill_search_params(
         driver, 
@@ -292,7 +299,7 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                 code = search_entry.options
                 assert isinstance(code, str)
                 _code_searchbox_input(code, searchbox_interact, driver)
-                print(f'Найден код {code} в текстовом поиске')
+                print(f'Найден код {code} в строке поиска')
 
         case WidgetType.TEXT:
             input_interact = driver.find_element(By.XPATH, xpath_soup(el))
@@ -326,6 +333,7 @@ def uncollapse_options(driver):
         print(f'Драйвер {get_pid()}: не удалось найти все опции фильтра')
         # uncollapse_options(driver)
         raise FillError
+    
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
     filter_options = filter_el.find_all("div", {"class": "modal-settings-section"})
@@ -443,6 +451,7 @@ def fill_search_params(driver, search_url, search_params):
                 print(f'Драйвер {get_pid()}: не удалось подготовить фильтры для заполнения. Перезапускаю заполнение')
                 driver.refresh()
                 err_cnt += 1
+            
     if err_cnt == max_err_cnt:
         raise FillRetryEndless
 

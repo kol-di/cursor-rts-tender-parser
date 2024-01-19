@@ -183,15 +183,27 @@ def collect(driver):
     return collected
 
 
-def output_collected(output_file, collected, db_conn):
-    collected = [col for col in collected if (len(col.notif_num) == 19) or 
-                                             (len(col.notif_num) == 11 and col.notif_num.startswith('3'))]
-    new_collected = db_conn.get_new_numbers(collected)
+def output_collected(output_file, collected, db_conn, fz):
+    if fz == '44':
+        collected  = [col for col in collected if (len(col) == 19)]
+        collected = list(set(collected))
+
+    # collected = [col for col in collected if (len(col.notif_num) == 19) or 
+    #                                          (len(col.notif_num) == 11 and col.notif_num.startswith('3'))]
+    
+    elif fz == '223':
+        collected = [col for col in collected if (len(col.notif_num) == 11 and col.notif_num.startswith('3'))]
+    
+    new_collected = db_conn.get_new_numbers(collected, fz)
     if new_collected:
         with open(output_file, 'a') as f:
             for col in new_collected:
-                col_res_nonempty = [num for num in [col.notif_num, col.noticeinfoid, col.pfid] if num != '']
-                print_str = ';'.join([num for num in col_res_nonempty])
+
+                if fz == '44':
+                    print_str = col
+                elif fz == '223':
+                    col_res_nonempty = [num for num in [col.notif_num, col.noticeinfoid, col.pfid] if num != '']
+                    print_str = ';'.join([num for num in col_res_nonempty])
                 print(print_str, file=f)
     
     print(f'Найдено {len(collected)} уникальных, из них {len(new_collected)} новых')

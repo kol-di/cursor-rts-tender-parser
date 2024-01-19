@@ -33,6 +33,8 @@ def get_args(argv):
                     help='Запуск без интерфейса')
     ap.add_argument('--num-proc', required=False, type=int, 
                     help='Количество запускаемых процессов')
+    ap.add_argument('--fz', required=True, choices=['44', '223'],
+                    help='поиск по ФЗ44/ФЗ223')
     return ap.parse_args() 
 
 
@@ -72,7 +74,7 @@ def _in_out_file_gen(input_folder, output_folder, out_prefix=''):
                 logging.warning(f"Can't read file {in_file_path}")
 
 
-def mp_kw_job(input_data, search_interval, kw_policy):
+def mp_kw_job(input_data, fz, search_interval, kw_policy):
     try:
         print(f'Драйвер {get_pid()}: поиск по словам {input_data}')
 
@@ -84,7 +86,7 @@ def mp_kw_job(input_data, search_interval, kw_policy):
         from parser.driver import DRIVER
 
         collected = []
-        fill_res = fill(DRIVER, input_data, 'kw', search_interval, kw_policy=kw_policy)
+        fill_res = fill(DRIVER, input_data, 'kw', fz, search_interval, kw_policy=kw_policy)
         if fill_res is not None:
             collected = collect(DRIVER)
 
@@ -95,7 +97,7 @@ def mp_kw_job(input_data, search_interval, kw_policy):
         raise Exception(f"Драйвер {get_pid()}:\n" + "".join(traceback.format_exception(*sys.exc_info()))) 
 
 
-def mp_okpd_job(input_data, search_interval):
+def mp_okpd_job(input_data, fz, search_interval):
     try:
         print(f'Драйвер {get_pid()}: поиск по кодам {input_data}')
 
@@ -107,14 +109,14 @@ def mp_okpd_job(input_data, search_interval):
         from parser.driver import DRIVER
 
         collected = []
-        fill_res = fill(DRIVER, input_data, 'okpd', search_interval, okdp_policy='tree')
+        fill_res = fill(DRIVER, input_data, 'okpd', fz, search_interval, okdp_policy='tree')
         if fill_res is not None:
             # if all codes were not filled then search uses all codes, so we skip
             if len(fill_res[WidgetType.NESTED_LIST]) < len(input_data):
                 collected.extend(collect(DRIVER))
             if fill_res[WidgetType.NESTED_LIST]:
                 for code in fill_res[WidgetType.NESTED_LIST]:
-                    fill(DRIVER, code, 'okpd', search_interval, okdp_policy='text')
+                    fill(DRIVER, code, 'okpd', fz, search_interval, okdp_policy='text')
                     collected.extend(collect(DRIVER))
         
         print(f'Драйвер {get_pid()}: собрано {len(collected)}')
@@ -155,6 +157,7 @@ def main(argv):
 
     # get common launch settings
     mode = getattr(ap, 'mode', None)
+    fz = getattr(ap, 'fz', None)
     num_proc = conf['runtime'].getint('num_proc')
     if getattr(ap, 'num_proc', None) is not None:
         num_proc = ap.num_proc 
@@ -191,14 +194,20 @@ def main(argv):
                         print(f'Поиск по ключевым словам из файла {input_file}')
                         input_data = get_input_data(input_file)
 
-                        mp_kw_job_partial = partial(mp_kw_job, search_interval=search_interval, kw_policy=kw_policy)
+                        mp_kw_job_partial = partial(mp_kw_job, fz=fz, search_interval=search_interval, kw_policy=kw_policy)
                         chunks_urls = chunk_into_n(input_data, num_proc)
                         collected_num_url = pool.map(mp_kw_job_partial, chunks_urls, 1)
                         collected_num_url = list(set(chain(*collected_num_url)))
                         
-                        chunks_info = chunk_into_n(collected_num_url, num_proc)
-                        collected_info = pool.map(parse_nums_info_job, chunks_info, 1)
-                        output_collected(output_file, list(chain(*collected_info)), db_conn)
+                        if fz == '44':
+                            collected_nums = [col[0] for col in collected_num_url]
+                            output_collected(output_file, collected_nums, db_conn, fz)
+
+                        elif fz == '223':
+                            chunks_info = chunk_into_n(collected_num_url, num_proc)
+                            collected_info = pool.map(parse_nums_info_job, chunks_info, 1)
+                            output_collected(output_file, list(chain(*collected_info)), db_conn, fz)
+
                         filter_unique(output_file)
 
                     #     del_files.append(input_file)
@@ -214,14 +223,20 @@ def main(argv):
                         print(f'Поиск по кодам ОКПД из файла {input_file}')
                         input_data = get_input_data(input_file)
 
-                        okpd_kw_job_partial = partial(mp_okpd_job, search_interval=search_interval)
+                        okpd_kw_job_partial = partial(mp_okpd_job, fz=fz, search_interval=search_interval)
                         chunks_urls = chunk_into_n(input_data, num_proc)
                         collected_num_url = pool.map(okpd_kw_job_partial, chunks_urls, 1)
                         collected_num_url = list(set(chain(*collected_num_url)))
 
-                        chunks_info = chunk_into_n(collected_num_url, num_proc)
-                        collected_info = pool.map(parse_nums_info_job, chunks_info, 1)
-                        output_collected(output_file, list(chain(*collected_info)), db_conn)
+                        if fz == '44':
+                            collected_nums = [col[0] for col in collected_num_url]
+                            output_collected(output_file, collected_nums, db_conn, fz)
+
+                        elif fz == '223':
+                            chunks_info = chunk_into_n(collected_num_url, num_proc)
+                            collected_info = pool.map(parse_nums_info_job, chunks_info, 1)
+                            output_collected(output_file, list(chain(*collected_info)), db_conn, fz)
+
                         filter_unique(output_file)
 
                     #     del_files.append(input_file)
