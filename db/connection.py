@@ -9,9 +9,13 @@ class DBConnection:
         self.conn = pyodbc.connect(conn_string)
 
 
-    def get_new_numbers(self, nums):
-        if not nums:
+    def get_new_numbers(self, collected, fz):
+        if not collected:
             return []
+        if fz == '44':
+            nums = collected
+        elif fz == '223':
+            nums = [col.notif_num for col in collected]
         
         query1 = \
 """
@@ -26,10 +30,10 @@ INSERT INTO #RTSTempCollected
 VALUES {nums_str}
 """
         query3 = \
-"""
+f"""
 SELECT distinct t.notifnr 
 FROM #RTSTempCollected t
-LEFT JOIN [cursorimport].import.notifications44 n
+LEFT JOIN [cursorimport].import.notifications{'223' if fz == '223' else '44'} n
     ON t.notifnr = n.notificationnumber
 WHERE n.id_Notification is NULL
 """
@@ -43,10 +47,15 @@ WHERE n.id_Notification is NULL
             cursor.execute(query2(nums_str))
 
         cursor.execute(query3)
-        ret = [num[0] for num in cursor.fetchall()]
+        new_nums = [num[0] for num in cursor.fetchall()]
         cursor.close()
         
-        return ret
+        if fz == '44':
+            new_collected = new_nums
+        elif fz == '223':
+            new_collected = [col for col in collected if col.notif_num in new_nums]
+
+        return new_collected
     
     def close(self):
         self.conn.close()

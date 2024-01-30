@@ -3,7 +3,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 import selenium.webdriver.support.expected_conditions as EC
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
 from bs4 import BeautifulSoup
 from dataclasses import dataclass, field
 import dataclasses
@@ -15,8 +15,10 @@ from datetime import date, timedelta
 import logging
 import sys
 import chardet
+from pathlib import Path
+from concurrent import futures
 
-from .utils import xpath_soup, native_click
+from .utils import xpath_soup, native_click, get_pid
 
 
 FILTER_URL = r"https://www.rts-tender.ru/poisk/search?keywords=&isFilter=1"
@@ -75,12 +77,12 @@ class SearchParams:
         self.trade_platforms: SearchEntry = SearchEntry(
             name='торговая площадка', 
             type=WidgetType.LIST, 
-            options=['РТС-тендер', 'АО "РАД"', 'АО «ЕЭТП»', 'АГЗ РТ', 'АО «Сбербанк-АСТ»', 'лектронная Торговая Площадка 223', 'ЭТП ТЭК-Торг', 'Электронная торговая площадка «Фабрикант»', 'ЭТП Газпромбанк']
+            options=[]
         )
         self.regulation: SearchEntry = SearchEntry(
             name='правило проведения', 
             type=WidgetType.GRID, 
-            options=['44-фз']
+            options=[]
         )
         self.publish_date: SearchEntry = SearchEntry(
             name='фильтры по датам', 
@@ -91,7 +93,8 @@ class SearchParams:
         self.okpd: SearchEntry = SearchEntry(
             name='окпд2', 
             type=WidgetType.NESTED_LIST, 
-            options=[]
+            options=[], 
+            extra='tree'
         )
         self.keyword: SearchEntry = SearchEntry(
             name=None, 
@@ -100,39 +103,77 @@ class SearchParams:
         )
 
 
-def fill(driver, input_file, mode, search_interval, kw_policy=None):
+class ParserError(Exception):
+    pass
+
+class FillError(ParserError):
+    pass
+
+class FillRetryEndless(ParserError):
+    pass
+
+
+def get_input_data(input):
+    if isinstance(input, Path):
+        with open(input, 'rb') as f:
+            dec = chardet.detect(f.read())
+        with open(input, encoding=dec['encoding']) as f:
+            input_data = []
+            for line in f:
+                input_data.append(line.strip())
+    if isinstance(input, str):
+        input_data = [input]
+    
+    return input_data
+
+
+def fill(driver, input_data, mode, fz, search_interval, kw_policy=None, okdp_policy=None):
     if mode is None:
-        logging.error("No mode provided")
+        print("No mode provided")
+        # logging.error("No mode provided")
         sys.exit()
+    if input_data is None or not input_data:
+        return None
 
     search_url = FILTER_URL
 
     search_params = SearchParams()
     # fill new search params from input
     search_params.publish_date.extra = search_interval
-    with open(input_file, 'rb') as f:
-        dec = chardet.detect(f.read())
-    with open(input_file, encoding=dec['encoding']) as f:
-        input_data = []
-        for line in f:
-            input_data.append(line.strip())
-    if mode == 'kw':
+
+    if mode == 'kw' and kw_policy is not None:
         search_params.keyword.options = input_data
         if kw_policy == 'all':
             search_params.quick_settings.options = ['Искать в файлах', 'Точное соответствие']
         if kw_policy == 'any':
             search_params.quick_settings.options = ['Искать в файлах']
-    if mode == 'okpd': 
+    if mode == 'okpd' and okdp_policy is not None: 
         search_params.okpd.options = input_data
+        if okdp_policy == 'tree':
+            search_params.okpd.extra = 'tree'
+        if okdp_policy == 'text':
+            search_params.okpd.extra = 'text'
 
+    if fz is None:
+        search_params.regulation.options = ['44-фз', '223-фз']
+    elif fz == '44':
+        search_params.regulation.options = ['44-фз']
+    elif fz == '223':
+        search_params.regulation.options = ['223-фз']
 
-    fill_search_params(
+    failure = fill_search_params(
         driver, 
         search_url,
         search_params)
-    
-    # wait redirect
-    WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
+
+    try:
+        WebDriverWait(driver, 10).until(lambda driver: driver.current_url != search_url)
+    except TimeoutException:
+        print(f'Драйвер {get_pid()}: первышен лимит времени при переходе на страницу результатов. Перезапускаю заполнение параметров')
+        driver.refresh()
+        return fill(driver, input_data, mode, search_interval, kw_policy, okdp_policy)
+
+    return failure
 
 
 def _nested_list_dfs(ul, code, is_root=False):
@@ -154,21 +195,55 @@ def _nested_list_dfs(ul, code, is_root=False):
                 if code.startswith(label) or ((len(label) == len(code)) and code.startswith(label[:-1]) and label.endswith('0')):
                     if code == label:
                         return li.find_element(By.TAG_NAME, 'label')
-                    ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                    ul = WebDriverWait(li, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                     if (ret := _nested_list_dfs(ul, code)) is not None:
                         return ret
             else:
-                ul = WebDriverWait(li, 20).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
+                ul = WebDriverWait(li, 5).until(EC.presence_of_element_located((By.TAG_NAME, 'ul')))
                 root_match = _nested_list_dfs(ul, code)
                 if root_match is not None:
                     return root_match
         except TimeoutException as e:
-            logging.error("Exception when unrolling nested list occured", exc_info=True)
+            pass
+            # logging.error(f"Process {get_pid()}: Exception when unrolling nested list for code {code} occured", exc_info=True)
+
+
+def _code_searchbox_input(code, searchbox, driver):
+    # clear previous
+    clear_btn = WebDriverWait(searchbox, 10).until(
+        EC.element_to_be_clickable((By.CLASS_NAME, "cstm-button-clear"))
+    )
+    native_click(clear_btn, driver)
+
+    # senf code to input field
+    input = WebDriverWait(searchbox, 10).until(
+        EC.element_to_be_clickable((By.TAG_NAME, "input"))
+    )
+    input.send_keys(code)
+
+    # wait for autocomplete to appear
+    autocomp = WebDriverWait(searchbox, 20).until(
+        EC.presence_of_element_located((By.CLASS_NAME, "cstm-search__autocomplite"))
+    )
+    suggest = WebDriverWait(autocomp, 20).until(
+        EC.presence_of_element_located((By.CLASS_NAME, "cstm-search__suggest"))
+    )
+
+    # discover option with needed code
+    WebDriverWait(suggest, 20).until(
+        EC.text_to_be_present_in_element((By.TAG_NAME, "b"), code)
+    )
+    native_click(suggest, driver)
 
 
 def fill_parameter(driver, el, search_entry: SearchEntry):
     if el is None:
-        logging.warning(f"No parameter to fill for type {search_entry.type.name}")
+        print(f"Драйвер {get_pid()}: не удалось заполнить параметр {search_entry.name}")
+        return
+        # logging.warning(f"No parameter to fill for type {search_entry.type.name}")
+
+    # return options which cant be filled
+    failed = []
 
     match search_entry.type:
         case WidgetType.GRID | WidgetType.LIST:
@@ -204,21 +279,35 @@ def fill_parameter(driver, el, search_entry: SearchEntry):
                             # close blocking react widget
                             webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
         case WidgetType.NESTED_LIST:
-            ul = driver.find_element(By.XPATH, xpath_soup(el))
-            for code in search_entry.options:
-                checkbox = _nested_list_dfs(ul, code, is_root=True)
-                if checkbox is not None:
-                    print(f'Найден код {code}')
-                    checkbox.click()
-                else:
-                    print(f'Не удалось найти код {code}')
+            if search_entry.extra == 'tree':
+                # element for checkbox input
+                code_tree = el.find("div", {"class": "settings-tree"}).find("ul")
+                ul = driver.find_element(By.XPATH, xpath_soup(code_tree))
+
+                for code in search_entry.options:
+                    checkbox = _nested_list_dfs(ul, code, is_root=True)
+                    if checkbox is not None:
+                        print(f'Найден код {code} в дереве')
+                        checkbox.click()
+                    else:
+                        print(f'Не удалось найти код {code} в дереве')
+                        failed.append(code)
+
+            if search_entry.extra == 'text':
+                searchbox = el.find("div", {"class": "form-control-search"})
+                searchbox_interact = driver.find_element(By.XPATH, xpath_soup(searchbox))
+                code = search_entry.options
+                assert isinstance(code, str)
+                _code_searchbox_input(code, searchbox_interact, driver)
+                print(f'Найден код {code} в строке поиска')
+
         case WidgetType.TEXT:
             input_interact = driver.find_element(By.XPATH, xpath_soup(el))
             for option in search_entry.options:    
                 input_interact.send_keys(option)
                 webdriver.ActionChains(driver).send_keys(Keys.ENTER).perform()
 
-
+    return failed
 
 
 def show_more(driver):
@@ -237,6 +326,14 @@ def show_more(driver):
 
 def uncollapse_options(driver):
     """Make collapsed options visible"""
+    try:
+        WebDriverWait(driver, 2).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, 'title-collapse--more')))
+        WebDriverWait(driver, 2).until(EC.visibility_of_all_elements_located((By.CLASS_NAME, 'title-collapse--less')))
+    except TimeoutException:
+        print(f'Драйвер {get_pid()}: не удалось найти все опции фильтра')
+        # uncollapse_options(driver)
+        raise FillError
+    
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
     filter_options = filter_el.find_all("div", {"class": "modal-settings-section"})
@@ -296,10 +393,18 @@ def get_modal_settings_row(filter_option, search_entry: SearchEntry):
                     # LIST type widgets also contain checkbox grid, but with extra buttons
                     if 'свернуть' in str.lower(msr_a.get_text()):
                         # nested msr in LIST type
-                        return msr.find("div", {"class", "modal-settings-row"})
+                        if (msr_res := msr.find("div", {"class", "modal-settings-row"})) is not None:
+                            return msr_res
+                        # else:
+                        #     print('No modal settings row for type LIST')
+                        #     raise Exception
         # for NESTED_LIST there's no msr but we return the deepest definitve structure
         case WidgetType.NESTED_LIST:
-            return filter_option.find("div", {"class": "settings-tree"}).find("ul")
+            return filter_option
+        case _:
+            pass
+        
+    print(f'Драйвер {get_pid()}: no modal settings row for {search_entry.name}')
         
 
 def click_search(driver):
@@ -311,11 +416,49 @@ def click_search(driver):
 
 
 def fill_search_params(driver, search_url, search_params):
-    driver.get(search_url)
+    # try:
+    #     driver.get(search_url)
+    #     # refresh if filter page load is stuck
+    #     WebDriverWait(driver, 10).until(EC.text_to_be_present_in_element_attribute(
+    #         (By.CLASS_NAME, 'consultation_modal'), 'style', 'display: none'))
+    # except TimeoutException:
+    #     print(f'Драйвер {get_pid()}: превышен лимит времени при переходе на страницу фильтров. Перезапускаю заполнение параметров')
+    #     driver.refresh()
+    #     return fill_search_params(driver, search_url, search_params)
+
+    # print(f'driver {get_pid()} redirected to serach_url')
     # the below functions need to be called separately to recreate soup each time
-    uncollapse_options(driver)
-    show_more(driver)
-    remove_selection(driver)
+
+    def __fill_prep(driver, search_url):
+        driver.get(search_url)
+        WebDriverWait(driver, 10).until(EC.text_to_be_present_in_element_attribute(
+            (By.CLASS_NAME, 'consultation_modal'), 'style', 'display: none'))
+
+        uncollapse_options(driver)
+        show_more(driver)
+        remove_selection(driver)    
+
+    no_err = False
+    err_cnt, max_err_cnt = 0, 10
+    while no_err != True and err_cnt < max_err_cnt:
+
+        with futures.ThreadPoolExecutor() as executor:    
+            future = executor.submit(__fill_prep, driver, search_url)
+            try:
+                future.result(timeout=20)
+                no_err = True
+            except (futures.TimeoutError, TimeoutException, ElementClickInterceptedException, FillError):
+                print(f'Драйвер {get_pid()}: не удалось подготовить фильтры для заполнения. Перезапускаю заполнение')
+                driver.refresh()
+                err_cnt += 1
+            
+    if err_cnt == max_err_cnt:
+        raise FillRetryEndless
+
+    # print(f'driver {get_pid()} is ready to fill')
+
+    # store fill success/failure results
+    fill_failure = {}
 
     soup = BeautifulSoup(driver.page_source, 'html.parser')
     filter_el = soup.find("div", {"class": "modal-settings-filter__main"})
@@ -328,11 +471,12 @@ def fill_search_params(driver, search_url, search_params):
         try:
             filter_title_el_text = filter_title_el.get_text()
         except AttributeError:
-            logging.error(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
+            pass
+            # print(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
+            # logging.error(f'DOM object {filter_option.find("div", {"class": "filter-title"})} has no attribute <div> with classes "title-collapse title-collapse--more"')
 
         # look for match of input field title with our options
         for search_entry in vars(search_params).values():
-            # search_entry = getattr(search_params, search_field.name)
             # for text we have separate logic
             if search_entry.type is WidgetType.TEXT:
                 continue
@@ -341,10 +485,11 @@ def fill_search_params(driver, search_url, search_params):
             # if html text matches our hardcoded field title
             if str.lower(search_entry_name) in str.lower(filter_title_el_text):
                 modal_settings_row = get_modal_settings_row(filter_option, search_entry)
-                fill_parameter(
+                fill_res = fill_parameter(
                     driver, 
                     modal_settings_row, 
                     search_entry)
+                fill_failure[search_entry.type] = fill_res
                 
     # separate fill logic for text
     input = soup.find("div", {"class": "modal-settings-search"}).find(
@@ -352,9 +497,12 @@ def fill_search_params(driver, search_url, search_params):
             "input"
         )
     keyword_search_params = search_params.keyword
-    fill_parameter(driver, input, keyword_search_params)
+    fill_res = fill_parameter(driver, input, keyword_search_params)
+    fill_failure[search_entry.type] = fill_res
                 
     click_search(driver)
+
+    return fill_failure
 
     
     

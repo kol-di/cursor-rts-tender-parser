@@ -1,13 +1,15 @@
 from selenium import webdriver
-from webdriver_manager.chrome import ChromeDriverManager
+import multiprocessing as mp
 import time
 
 
 WEBSITE_URL = r'https://www.rts-tender.ru/'
 
+DRIVER = None   # this variable is local to each subprocess
 
-def init_driver(headless=True):
-    service = webdriver.ChromeService(ChromeDriverManager().install())
+
+def init_driver(driver_path, headless=True):
+    service = webdriver.ChromeService(driver_path)
     options = webdriver.ChromeOptions()
 
     # ignore ssl handshake
@@ -27,8 +29,17 @@ def init_driver(headless=True):
     
     options.accept_insecure_certs = True
     driver = webdriver.Chrome(service=service, options=options)
+    # driver.set_page_load_timeout(10)
     driver.get(WEBSITE_URL)
     driver.execute_script(r"Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
     time.sleep(10)
     
-    return driver
+    global DRIVER
+    DRIVER = driver
+
+    driver_id = mp.current_process().pid
+    print(f'Драйвер {driver_id} подключен')
+
+
+def quit_driver():
+    DRIVER.quit()

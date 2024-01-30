@@ -1,3 +1,7 @@
+from math import floor
+import multiprocessing as mp
+
+
 def xpath_soup(element):
     """
     Generate xpath of soup element
@@ -21,3 +25,23 @@ def xpath_soup(element):
 
 def native_click(el, driver):
     driver.execute_script("arguments[0].click();", el)
+
+
+def chunk_into_n(lst, n):
+    min_size = floor(len(lst) / n)
+    rem = len(lst) - min_size * n
+    result = []
+    prev_idx = 0
+    for _ in range(n):
+        next_idx = prev_idx + min_size
+        if rem > 0:
+            next_idx += 1
+            rem -= 1
+        result.append(lst[prev_idx:next_idx])
+        prev_idx = next_idx
+
+    return result
+
+def get_pid():
+    proc = mp.current_process()
+    return proc.pid
